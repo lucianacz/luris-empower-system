@@ -4,7 +4,7 @@ This document separates the example total previously visible in the app from the
 
 ## The visible USD 11,824.42
 
-The existing USD 11,824.42 was an example-workspace summary, not a result loaded from Supabase. It covered March 1 through August 31, 2026. It is now generated from and tested against 45 individual example transactions, so every dashboard value opens the exact rows that support it.
+The existing USD 11,824.42 was an example-workspace summary, not a result loaded from Supabase. It covered March 1 through August 31, 2026. It is now generated from and tested against 46 individual example transactions, including the fee on an internal transfer, so every dashboard value opens the exact rows that support it.
 
 | Month | USD cash spending |
 | --- | ---: |
@@ -16,7 +16,7 @@ The existing USD 11,824.42 was an example-workspace summary, not a result loaded
 | August 2026 | 2,184.42 |
 | **Total** | **11,824.42** |
 
-The same 45 example transactions reconcile by category:
+The same 46 example transactions reconcile by category:
 
 | Category | USD |
 | --- | ---: |
