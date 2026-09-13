@@ -1,6 +1,6 @@
 # Luris Empower System
 
-Empower is a private, statement-first personal finance application. It imports exported financial files, normalizes transaction history, finds duplicates, reconstructs transfers between owned accounts, and keeps investments separate from ordinary spending.
+Empower is a private, statement-first personal finance application focused on understanding how money is used: monthly cost of living, spending categories, essential versus flexible expenses, and personal versus household costs. It imports exported financial files, finds duplicates, keeps owned-account transfers out of spending totals, and separates investments from ordinary expenses.
 
 The current MVP is built around the supplied Deel, ARQ, Brubank, Payoneer, and Alpaca formats. Direct banking APIs are intentionally not required.
 
@@ -16,6 +16,7 @@ The current MVP is built around the supplied Deel, ARQ, Brubank, Payoneer, and A
 ## What works
 
 - Drag-and-drop CSV, XLSX, and PDF preview
+- Multi-file drop with a safe preview-and-confirm queue
 - Automatic provider detection with a manual override
 - Reusable generic column mapping
 - Normalized signed amounts, dates, currencies, statuses, transaction kinds, original amounts, and fees
@@ -25,6 +26,8 @@ The current MVP is built around the supplied Deel, ARQ, Brubank, Payoneer, and A
 - Partial, one-to-many, many-to-one, cross-currency, and multi-step transfer suggestions
 - Questions for unresolved incoming movements and cash withdrawals
 - Live normalized ledger with category assignment and personal/household splits
+- Spending-first dashboard with monthly, category, life-expense, and household views
+- Default category suggestions plus reusable exact-merchant rules
 - Questions Inbox decisions that update transaction treatment and totals
 - Transfer-chain review with confirm/reject actions and per-leg allocations
 - Account freshness, statement coverage-gap, and safe-overlap indicators
@@ -32,7 +35,7 @@ The current MVP is built around the supplied Deel, ARQ, Brubank, Payoneer, and A
 - Whole-batch rollback
 - Separate investment schema, Alpaca statement detection, and manual positions/snapshots
 
-All 37 supplied real files were previewed locally through their production adapters: 14 CSV exports and 23 PDF statements. Provider detection succeeded for Deel, ARQ, Brubank, Payoneer, and Alpaca, including empty ARQ statement months. The originals were not modified, copied into this repository, or committed. See [statement mapping notes](docs/statement-mappings.md) for the anonymized format analysis.
+All 37 supplied real files were previewed locally through their production adapters: 14 CSV exports and 23 PDF statements. Provider detection succeeded for Deel, ARQ, Brubank, Payoneer, and Alpaca, including empty ARQ statement months. The originals were not modified, copied into this repository, or committed. See [statement mapping notes](docs/statement-mappings.md) for the anonymized format analysis and the [2025-to-date coverage audit](docs/coverage-audit-2025-to-date.md) for missing periods.
 
 ## Local setup
 
@@ -105,14 +108,17 @@ Rollback removes transactions created by the selected batch and marks the batch 
 
 ## Import workflow
 
-1. Open **Imports** and drop a statement.
+1. Open **Imports** and drop one statement or the complete set.
 2. Review the detected institution and account currency.
 3. If the file is unfamiliar, map its date, description, amount or debit/credit, currency, status, ID, and type columns.
 4. Review warnings and normalized rows.
 5. Confirm the import after signing in.
-6. The app stores the original file, imports only new rows, opens questions for uncertainty, and rebuilds transfer-chain suggestions.
+6. The app stores the original file, imports only new rows, opens questions for uncertainty, and quietly rebuilds transfer suggestions.
+7. Continue through the queue until every selected file is confirmed or safely skipped as a duplicate.
 
-The overview then shows each account's last import, last transaction, missing periods, overlapping statement periods, and whether a new statement is recommended.
+The Spending view then leads with monthly expenses, categories, essential and flexible costs, and personal or household shares. Data coverage remains available below it to flag missing or stale statements.
+
+When a transaction is categorized, matching historical descriptions are categorized at the same time and an exact-match rule is saved for future imports. Ambiguous person-to-person payments remain in the uncategorized queue for review.
 
 The checksum prevents a repeated file from creating another batch. Overlapping exports are still safe because provider IDs and transaction fingerprints catch repeated rows.
 
