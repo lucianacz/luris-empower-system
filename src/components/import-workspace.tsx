@@ -32,6 +32,8 @@ type Stage = "idle" | "previewing" | "preview" | "committing" | "complete" | "er
 export function ImportWorkspace() {
   const inputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
+  const [fileQueue, setFileQueue] = useState<File[]>([]);
+  const [queueIndex, setQueueIndex] = useState(0);
   const [provider, setProvider] = useState<Provider | "">("");
   const [mapping, setMapping] = useState<ColumnMapping>({});
   const [preview, setPreview] = useState<ImportPreview | null>(null);
@@ -59,18 +61,26 @@ export function ImportWorkspace() {
     }
   }, [mapping, provider]);
 
-  const chooseFile = (selected?: File) => {
-    if (!selected) return;
+  const openFile = (selected: File, index: number) => {
+    setQueueIndex(index);
     setFile(selected);
     setPreview(null);
     setMapping({});
-    void runPreview(selected, provider, {});
+    setProvider("");
+    void runPreview(selected, "", {});
+  };
+
+  const chooseFiles = (selected: FileList | File[]) => {
+    const files = Array.from(selected);
+    if (!files.length) return;
+    setFileQueue(files);
+    openFile(files[0], 0);
   };
 
   const handleDrop = (event: DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     setDragging(false);
-    chooseFile(event.dataTransfer.files[0]);
+    chooseFiles(event.dataTransfer.files);
   };
 
   const confirmImport = async () => {
@@ -96,6 +106,8 @@ export function ImportWorkspace() {
 
   const reset = () => {
     setFile(null);
+    setFileQueue([]);
+    setQueueIndex(0);
     setPreview(null);
     setMapping({});
     setProvider("");
@@ -134,17 +146,17 @@ export function ImportWorkspace() {
               >
                 <div>
                   <span className="mx-auto grid size-14 place-items-center rounded-2xl bg-[var(--forest-soft)] text-[var(--forest)]"><UploadCloud aria-hidden="true" className="size-6" /></span>
-                  <p className="mt-4 font-semibold">Drop a statement here</p>
-                  <p className="mt-1 text-sm text-[var(--muted)]">CSV, XLSX, or PDF up to 15 MB</p>
-                  <button onClick={() => inputRef.current?.click()} className="mt-5 rounded-xl bg-[var(--forest)] px-4 py-2.5 text-sm font-semibold text-white">Choose a file</button>
-                  <input ref={inputRef} type="file" className="sr-only" accept=".csv,.xlsx,.pdf,text/csv,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={(event) => chooseFile(event.target.files?.[0])} />
+                  <p className="mt-4 font-semibold">Drop all your statements here</p>
+                  <p className="mt-1 text-sm text-[var(--muted)]">One or many CSV, XLSX, or PDF files, up to 15 MB each</p>
+                  <button onClick={() => inputRef.current?.click()} className="mt-5 rounded-xl bg-[var(--forest)] px-4 py-2.5 text-sm font-semibold text-white">Choose files</button>
+                  <input ref={inputRef} type="file" multiple className="sr-only" accept=".csv,.xlsx,.pdf,text/csv,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={(event) => event.target.files && chooseFiles(event.target.files)} />
                 </div>
               </div>
             ) : (
               <div className="mt-6 space-y-5">
                 <div className="flex items-center gap-3 rounded-2xl border border-[var(--line)] bg-[var(--paper)] p-4">
                   <span className="grid size-10 place-items-center rounded-xl bg-[var(--surface)] text-[var(--forest)]">{file.name.toLowerCase().endsWith(".pdf") ? <FileText aria-hidden="true" className="size-5" /> : <FileSpreadsheet aria-hidden="true" className="size-5" />}</span>
-                  <div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold">{file.name}</p><p className="text-xs text-[var(--muted)]">{formatBytes(file.size)}</p></div>
+                  <div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold">{file.name}</p><p className="text-xs text-[var(--muted)]">{formatBytes(file.size)}{fileQueue.length > 1 ? ` · File ${queueIndex + 1} of ${fileQueue.length}` : ""}</p></div>
                   {stage === "previewing" ? <Loader2 aria-label="Reading statement" className="size-5 animate-spin text-[var(--forest)]" /> : <Check aria-label="File read" className="size-5 text-[var(--forest)]" />}
                 </div>
 
@@ -157,6 +169,7 @@ export function ImportWorkspace() {
                 {preview?.requiresMapping ? <MappingEditor headers={preview.headers} mapping={mapping} onChange={setMapping} onApply={() => void runPreview(file, provider, mapping)} /> : null}
                 {preview && !preview.requiresMapping ? <PreviewResult preview={preview} /> : null}
                 {message ? <StatusMessage message={message} error={stage === "error"} /> : null}
+                {stage === "complete" && queueIndex < fileQueue.length - 1 ? <button onClick={() => openFile(fileQueue[queueIndex + 1], queueIndex + 1)} className="w-full rounded-xl border border-[var(--forest)] px-4 py-3 text-sm font-semibold text-[var(--forest)]">Preview next file ({fileQueue.length - queueIndex - 1} remaining)</button> : null}
 
                 {preview && !preview.requiresMapping && stage !== "complete" ? (
                   <div className="flex flex-wrap items-center justify-between gap-4 border-t border-[var(--line)] pt-5">

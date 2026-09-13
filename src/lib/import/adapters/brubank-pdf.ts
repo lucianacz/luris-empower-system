@@ -25,10 +25,10 @@ export class BrubankPdfAdapter implements ImportAdapter {
       const debit = parseAmount(match[4], "comma");
       const credit = parseAmount(match[5], "comma");
       const amount = credit.minus(debit);
-      const ownAccountHint = /luciana\s+czikk/i.test(description);
-      const kind: TransactionKind = ownAccountHint ? "transfer" : amount.isPositive() ? "unknown" : "expense";
+      const transferDescription = /transferencia\s+(?:a|de)\b/i.test(description);
+      const kind: TransactionKind = transferDescription ? "unknown" : amount.isPositive() ? "unknown" : "expense";
       const warnings: string[] = [];
-      if (kind === "unknown") warnings.push("Incoming Brubank movement needs confirmation before it counts as income.");
+      if (kind === "unknown") warnings.push(amount.isPositive() ? "Incoming Brubank movement needs confirmation before it counts as income." : "Outgoing transfer needs confirmation before it counts as spending.");
 
       return [createTransaction({
         provider: "brubank",

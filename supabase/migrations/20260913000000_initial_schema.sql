@@ -103,9 +103,11 @@ create table public.categories (
   kind text not null default 'expense' check (kind in ('income', 'expense', 'transfer', 'investment')),
   color text,
   icon text,
+  life_area text not null default 'Other',
+  is_essential boolean not null default false,
   is_archived boolean not null default false,
   created_at timestamptz not null default now(),
-  unique (user_id, name, parent_id)
+  unique nulls not distinct (user_id, name, parent_id)
 );
 
 create table public.transactions (
@@ -169,11 +171,13 @@ create table public.categorization_rules (
   user_id uuid not null references auth.users(id) on delete cascade,
   category_id uuid not null references public.categories(id) on delete cascade,
   name text not null,
+  match_text text not null,
   priority integer not null default 100,
   conditions jsonb not null default '{}'::jsonb,
   enabled boolean not null default true,
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  unique (user_id, match_text)
 );
 
 create table public.questions (

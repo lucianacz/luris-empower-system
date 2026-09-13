@@ -7,13 +7,15 @@ const categorySchema = z.object({
   kind: z.enum(["income", "expense", "transfer", "investment"]).default("expense"),
   color: z.string().regex(/^#[0-9a-f]{6}$/i).nullable().optional(),
   icon: z.string().trim().max(40).nullable().optional(),
+  lifeArea: z.string().trim().min(1).max(60).default("Other"),
+  essential: z.boolean().default(false),
   parentId: z.string().uuid().nullable().optional(),
 });
 
 export async function GET() {
   const session = await sessionClient();
   if (session instanceof Response) return session;
-  const { data, error } = await session.supabase.from("categories").select("id,name,kind,color,icon,parent_id").eq("user_id", session.userId).eq("is_archived", false).order("name");
+  const { data, error } = await session.supabase.from("categories").select("id,name,kind,color,icon,parent_id,life_area,is_essential").eq("user_id", session.userId).eq("is_archived", false).order("name");
   if (error) return Response.json({ error: error.message }, { status: 422 });
   return Response.json({ categories: data ?? [] });
 }
@@ -23,7 +25,7 @@ export async function POST(request: Request) {
   if (session instanceof Response) return session;
   const result = categorySchema.safeParse(await request.json());
   if (!result.success) return Response.json({ error: result.error.issues[0]?.message }, { status: 400 });
-  const { data, error } = await session.supabase.from("categories").insert({ user_id: session.userId, name: result.data.name, kind: result.data.kind, color: result.data.color ?? null, icon: result.data.icon ?? null, parent_id: result.data.parentId ?? null }).select("id,name,kind,color,icon,parent_id").single();
+  const { data, error } = await session.supabase.from("categories").insert({ user_id: session.userId, name: result.data.name, kind: result.data.kind, color: result.data.color ?? null, icon: result.data.icon ?? null, parent_id: result.data.parentId ?? null, life_area: result.data.lifeArea, is_essential: result.data.essential }).select("id,name,kind,color,icon,parent_id,life_area,is_essential").single();
   if (error) return Response.json({ error: error.message }, { status: 422 });
   return Response.json({ category: data }, { status: 201 });
 }

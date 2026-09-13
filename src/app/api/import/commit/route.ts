@@ -1,3 +1,4 @@
+import { ensureDefaultCategories, suggestDefaultCategory } from "@/lib/categories/defaults";
 import { partitionDuplicates } from "@/lib/import/duplicates";
 import { previewFile } from "@/lib/import/engine";
 import { stableFingerprint } from "@/lib/import/normalize";
@@ -95,10 +96,15 @@ export async function POST(request: Request) {
     const { accepted, duplicates } = partitionDuplicates(preview.transactions, existingTransactions.map((item) => ({ sourceId: item.source_transaction_id, fingerprint: item.fingerprint })));
 
     if (accepted.length) {
+      const categoryIds = await ensureDefaultCategories(supabase, user.id);
+      const { data: savedRules, error: rulesError } = await supabase.from("categorization_rules").select("match_text,category_id").eq("user_id", user.id).eq("enabled", true);
+      if (rulesError) throw rulesError;
+      const savedCategoryIds = new Map((savedRules ?? []).map((rule) => [normalizeMatchText(rule.match_text), rule.category_id]));
       const transactionRows = accepted.map((transaction) => ({
         user_id: user.id,
         account_id: account.id,
         import_batch_id: batch.id,
+        category_id: savedCategoryIds.get(normalizeMatchText(transaction.description)) ?? categoryIds.get(suggestDefaultCategory(transaction) ?? "") ?? null,
         source_transaction_id: transaction.sourceId,
         fingerprint: transaction.fingerprint,
         occurred_at: transaction.occurredAt,
@@ -194,4 +200,8 @@ function latestDate(left: string | null | undefined, right: string | null | unde
   if (!left) return right ?? null;
   if (!right) return left;
   return left > right ? left : right;
+}
+
+function normalizeMatchText(value: string) {
+  return value.trim().toLocaleLowerCase();
 }

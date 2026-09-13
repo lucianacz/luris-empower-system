@@ -30,6 +30,7 @@ export interface WorkspaceTransaction {
   excluded_from_totals: boolean;
   fee_amount: string;
   category_id: string | null;
+  category: { name: string; life_area: string; is_essential: boolean; color: string | null } | null;
   account: { name: string; institution: string } | null;
   expense_splits?: Array<{ id: string; split_kind: string; label: string; percentage: string | null; amount: string | null }>;
 }
@@ -69,6 +70,22 @@ export interface WorkspaceCategory {
   color: string | null;
   icon: string | null;
   parent_id: string | null;
+  life_area: string;
+  is_essential: boolean;
+}
+
+export interface SpendingCurrencySummary {
+  currency: string;
+  total: number;
+  averagePerMonth: number;
+  personal: number;
+  household: number;
+  essential: number;
+  flexible: number;
+  uncategorized: number;
+  uncategorizedCount: number;
+  months: Array<{ month: string; amount: number }>;
+  categories: Array<{ name: string; lifeArea: string; color: string; amount: number; essential: boolean }>;
 }
 
 export interface WorkspaceInvestment {
@@ -93,13 +110,14 @@ export interface WorkspaceData {
   transferChains: WorkspaceTransferChain[];
   imports: Array<{ id: string; account_id?: string | null; file_name: string; status: string; row_count: number; imported_count: number; duplicate_count: number; unresolved_count: number; coverage_start?: string | null; coverage_end?: string | null; confirmed_at: string | null; created_at: string }>;
   categories: WorkspaceCategory[];
+  spending: SpendingCurrencySummary[];
   investments: WorkspaceInvestment[];
 }
 
 export const demoWorkspace: WorkspaceData = {
   mode: "demo" as const,
   totals: [
-    { currency: "USD", income: 6000, spending: 2184.42, internalMovement: 4397.75, fees: 25.75 },
+    { currency: "USD", income: 6000, spending: 11824.42, internalMovement: 4397.75, fees: 25.75 },
   ],
   accounts: [
     { id: "demo-deel", institution: "deel", name: "Deel USD account", currency: "USD", last_imported_at: "2026-08-29T00:00:00.000Z", last_transaction_at: "2026-08-29T00:00:00.000Z", coverage_start: "2026-01-01", coverage_end: "2026-08-29", coverage_gaps: [], overlapping_periods: 7 },
@@ -107,9 +125,9 @@ export const demoWorkspace: WorkspaceData = {
     { id: "demo-brubank", institution: "brubank", name: "Brubank ARS savings", currency: "ARS", last_imported_at: "2026-08-31T00:00:00.000Z", last_transaction_at: "2026-08-31T00:00:00.000Z", coverage_start: "2025-01-01", coverage_end: "2026-08-31", coverage_gaps: [], overlapping_periods: 0 },
   ],
   transactions: [
-    { id: "demo-1", occurred_at: "2026-08-29T00:00:00.000Z", description: "Example client payment", amount: "6000", currency: "USD", kind: "income", status: "posted", excluded_from_totals: false, fee_amount: "0", category_id: null, account: { name: "Deel USD account", institution: "deel" } },
-    { id: "demo-2", occurred_at: "2026-08-22T00:00:00.000Z", description: "Withdrawal to ARQ", amount: "-1300", currency: "USD", kind: "transfer", status: "posted", excluded_from_totals: true, fee_amount: "9.75", category_id: null, account: { name: "Deel USD account", institution: "deel" } },
-    { id: "demo-3", occurred_at: "2026-08-20T00:00:00.000Z", description: "Example grocery market", amount: "-84.2", currency: "USD", kind: "expense", status: "posted", excluded_from_totals: false, fee_amount: "0", category_id: null, account: { name: "Deel USD account", institution: "deel" } },
+    { id: "demo-1", occurred_at: "2026-08-29T00:00:00.000Z", description: "Example client payment", amount: "6000", currency: "USD", kind: "income", status: "posted", excluded_from_totals: false, fee_amount: "0", category_id: null, category: null, account: { name: "Deel USD account", institution: "deel" } },
+    { id: "demo-2", occurred_at: "2026-08-22T00:00:00.000Z", description: "Withdrawal to ARQ", amount: "-1300", currency: "USD", kind: "transfer", status: "posted", excluded_from_totals: true, fee_amount: "9.75", category_id: null, category: null, account: { name: "Deel USD account", institution: "deel" } },
+    { id: "demo-3", occurred_at: "2026-08-20T00:00:00.000Z", description: "Example grocery market", amount: "-84.2", currency: "USD", kind: "expense", status: "posted", excluded_from_totals: false, fee_amount: "0", category_id: "demo-groceries", category: { name: "Groceries", life_area: "Food", is_essential: true, color: "#52796f" }, account: { name: "Deel USD account", institution: "deel" } },
   ],
   questions: [
     { id: "demo-q1", prompt: "Is this incoming ARQ movement a transfer or income?", question_type: "classification", created_at: "2026-08-31T00:00:00.000Z", transaction_id: "demo-4", context: {} },
@@ -119,6 +137,7 @@ export const demoWorkspace: WorkspaceData = {
     { id: "demo-chain-1", status: "suggested", confidence: 0.96, source_amount: "1290.25", source_currency: "USD", fee_amount: "9.75", notes: "Deel → ARQ → Brubank", member_count: 4, members: [] },
   ],
   imports: [],
-  categories: [],
+  categories: [{ id: "demo-groceries", name: "Groceries", kind: "expense", color: "#52796f", icon: null, parent_id: null, life_area: "Food", is_essential: true }],
+  spending: [{ currency: "USD", total: 11824.42, averagePerMonth: 1970.74, personal: 9824.42, household: 2000, essential: 8230, flexible: 3594.42, uncategorized: 1174.42, uncategorizedCount: 20, months: [{ month: "2026-03", amount: 1640 }, { month: "2026-04", amount: 1812 }, { month: "2026-05", amount: 1728 }, { month: "2026-06", amount: 2054 }, { month: "2026-07", amount: 2406 }, { month: "2026-08", amount: 2184.42 }], categories: [{ name: "Housing", lifeArea: "Home", color: "#7a6c5d", amount: 4680, essential: true }, { name: "Groceries", lifeArea: "Food", color: "#52796f", amount: 2500, essential: true }, { name: "Dining out", lifeArea: "Food", color: "#d37a3d", amount: 1300, essential: false }, { name: "Uncategorized", lifeArea: "Needs review", color: "#a9a39a", amount: 1174.42, essential: false }, { name: "Transport", lifeArea: "Mobility", color: "#496f5d", amount: 1050, essential: true }, { name: "Travel", lifeArea: "Travel", color: "#4d7298", amount: 700, essential: false }, { name: "Subscriptions & software", lifeArea: "Digital", color: "#6c63a8", amount: 420, essential: false }] }],
   investments: [],
 };
