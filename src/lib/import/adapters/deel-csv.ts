@@ -42,7 +42,7 @@ export class DeelCsvAdapter implements ImportAdapter {
       const amount = parseAmount(row["Transaction Amount"]);
       const transferred = parseAmount(row["Amount Transferred"]);
       const providerFees = parseAmount(row["Provider Fee"]).plus(parseAmount(row["Provider Fees"])).plus(parseAmount(row["Cross Border Fees"])).plus(parseAmount(row["Exchange Rate Fees"]));
-      const inferredFee = amount.isNegative() && transferred.isPositive() ? Decimal.max(amount.abs().minus(transferred), 0) : new Decimal(0);
+      const inferredFee = amount.isNegative() && transferred.greaterThan(0) ? Decimal.max(amount.abs().minus(transferred), 0) : new Decimal(0);
       const fee = Decimal.max(providerFees, inferredFee);
       const kind: TransactionKind = sourceType.includes("client_payment") ? "income" : sourceType.includes("withdraw") ? "transfer" : sourceType.includes("fee") ? "fee" : "unknown";
       const method = row["Withdraw Method Custom Name"] || row["Withdraw Method"];

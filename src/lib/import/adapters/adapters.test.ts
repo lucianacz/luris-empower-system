@@ -16,10 +16,11 @@ describe("provider adapters", () => {
     const input = { fileName: "Deel Transactions.csv", format: "csv" as const, headers: parsed.headers, csvRows: parsed.rows };
     expect(adapter.detect(input)?.variant).toBe("balance");
     const transactions = adapter.parse(input);
-    expect(transactions).toHaveLength(3);
+    expect(transactions).toHaveLength(4);
     expect(transactions[0]).toMatchObject({ kind: "income", amount: "6000", excludedFromTotals: false });
     expect(transactions[1]).toMatchObject({ kind: "transfer", amount: "-1300", feeAmount: "9.75", excludedFromTotals: true });
     expect(transactions[2]).toMatchObject({ status: "failed", excludedFromTotals: true });
+    expect(transactions[3]).toMatchObject({ kind: "transfer", amount: "-500", feeAmount: "0", excludedFromTotals: true });
   });
 
   it("uses signed account amounts for Deel card activity", async () => {
