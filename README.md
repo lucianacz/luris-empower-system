@@ -26,7 +26,15 @@ The current MVP is built around the supplied Deel, ARQ, Brubank, Payoneer, and A
 - Partial, one-to-many, many-to-one, cross-currency, and multi-step transfer suggestions
 - Questions for unresolved incoming movements and cash withdrawals
 - Live normalized ledger with category assignment and personal/household splits
-- Spending-first dashboard with monthly, category, life-expense, and household views
+- Traceable USD reporting for current month, previous month, year to date, and custom ranges
+- Monthly cash-flow and normalized service-month views with completed-month averages
+- Click-through totals, charts, categories, merchants, locations, insights, and recurring costs
+- Dynamic location suggestions based on repeated evidence, with confirm/reject/edit/merge/split workflows
+- Spending-by-location comparisons with full-month averages, partial months, and flights separated
+- Proactive recurring-payment, missing-month, double-payment, and uncategorized-merchant questions
+- Recurring-expense details with original currency, historical USD value, and covered-month allocations
+- Configurable historical ARS methodology and dated exchange-rate provenance
+- Partner-ready transaction ownership, payer, beneficiary, split, and reimbursement fields
 - Default category suggestions plus reusable exact-merchant rules
 - Questions Inbox decisions that update transaction treatment and totals
 - Transfer-chain review with confirm/reject actions and per-leg allocations
@@ -35,7 +43,7 @@ The current MVP is built around the supplied Deel, ARQ, Brubank, Payoneer, and A
 - Whole-batch rollback
 - Separate investment schema, Alpaca statement detection, and manual positions/snapshots
 
-All 37 supplied real files were previewed locally through their production adapters: 14 CSV exports and 23 PDF statements. Provider detection succeeded for Deel, ARQ, Brubank, Payoneer, and Alpaca, including empty ARQ statement months. The originals were not modified, copied into this repository, or committed. See [statement mapping notes](docs/statement-mappings.md) for the anonymized format analysis and the [2025-to-date coverage audit](docs/coverage-audit-2025-to-date.md) for missing periods.
+All 37 supplied real files were previewed locally through their production adapters: 14 CSV exports and 23 PDF statements. Provider detection succeeded for Deel, ARQ, Brubank, Payoneer, and Alpaca, including empty ARQ statement months. The originals were not modified, copied into this repository, or committed. See [statement mapping notes](docs/statement-mappings.md), the [2025-to-date coverage audit](docs/coverage-audit-2025-to-date.md), and the [September 13 spending reconciliation](docs/spending-reconciliation-2026-09-13.md).
 
 ## Local setup
 
@@ -92,7 +100,7 @@ Open `http://localhost:3000`. Statement previews work without Supabase. Confirma
 
 ## Database and security
 
-The migration at `supabase/migrations/20260913000000_initial_schema.sql` creates:
+The initial and additive reporting migrations in `supabase/migrations/` create:
 
 - profiles and financial accounts;
 - import mappings, batches, and secure file metadata;
@@ -100,6 +108,10 @@ The migration at `supabase/migrations/20260913000000_initial_schema.sql` creates
 - transfer chains with partial allocations;
 - Questions Inbox records, expense splits, budgets, and life periods;
 - investment accounts, assets, activity, positions, and snapshots;
+- locations, currency hints, inferred or confirmed stays, and transaction location evidence;
+- people, payers, beneficiaries, reimbursements, merchant profiles, and recurring obligations;
+- historical exchange-rate provenance, USD reporting values, and service-month allocations;
+- evidence-linked insights and grouped proactive questions;
 - a private `statement-files` Storage bucket.
 
 Every user-owned table has Row Level Security enabled. Policies compare `auth.uid()` with the row owner, and statement object paths begin with that user ID. Import routes verify the authenticated user again on the server.
