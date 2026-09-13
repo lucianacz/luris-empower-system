@@ -86,5 +86,12 @@ function isFullMonth(month: string, from: string, to: string, today: string) { c
 function later(left: string, right: string) { return left > right ? left : right; }
 function earlier(left: string, right: string) { return left < right ? left : right; }
 function money(value: number) { return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(value); }
-function compactMoney(value: number) { return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", notation: "compact", maximumFractionDigits: 1 }).format(value); }
+function compactMoney(value: number) {
+  const absolute = Math.abs(value);
+  const sign = value < 0 ? "-" : "";
+  if (absolute >= 1_000_000) return `${sign}$${trimDecimal(absolute / 1_000_000)}M`;
+  if (absolute >= 1_000) return `${sign}$${trimDecimal(absolute / 1_000)}K`;
+  return `${sign}$${Math.round(absolute)}`;
+}
+function trimDecimal(value: number) { return value.toFixed(1).replace(/\.0$/, ""); }
 function formatMonth(value: string) { return new Date(`${value}-01T00:00:00Z`).toLocaleDateString("en-US", { month: "short", year: "numeric", timeZone: "UTC" }); }
