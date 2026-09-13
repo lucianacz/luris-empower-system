@@ -204,6 +204,17 @@ begin
   end loop;
 end $$;
 
+-- Supabase projects created after May 2026 do not automatically expose new
+-- tables through the Data API. Keep access explicit: authenticated users get
+-- table privileges, while row-level security remains the authorization layer.
+grant usage on schema public to authenticated;
+grant select, insert, update, delete on all tables in schema public to authenticated;
+
+-- The rollback function is intentionally available only to signed-in users;
+-- it also verifies ownership of the requested batch before changing data.
+revoke all on function public.rollback_import_batch(uuid) from public;
+grant execute on function public.rollback_import_batch(uuid) to authenticated;
+
 do $$
 declare table_name text;
 begin

@@ -52,7 +52,9 @@ Requirements:
 - Node.js 20.9 or newer
 - npm
 - A Supabase project
-- Supabase CLI if you want to apply migrations from the terminal
+
+The Supabase CLI is pinned as a development dependency, so use it through
+`npx` after installing the project dependencies.
 
 Install dependencies:
 
@@ -79,9 +81,14 @@ The service-role key is not required for normal imports. Do not expose it to the
 Apply the schema:
 
 ```bash
-supabase link --project-ref YOUR_PROJECT_REF
-supabase db push
+npx supabase login
+npx supabase link --project-ref YOUR_PROJECT_REF
+npx supabase db push --linked --dry-run --skip-vault
+npx supabase db push --linked --skip-vault
 ```
+
+The dry run must list only the expected pending migrations. Never use
+`supabase db reset --linked` against a project that contains imported data.
 
 In Supabase Authentication, enable email sign-in and add these redirect URLs:
 
