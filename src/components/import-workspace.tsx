@@ -87,6 +87,7 @@ export function ImportWorkspace() {
       if (!response.ok && response.status !== 409) throw new Error(result.error || "The import could not be confirmed.");
       setMessage(result.message);
       setStage("complete");
+      window.dispatchEvent(new Event("empower:refresh"));
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "The import could not be confirmed.");
       setStage("error");

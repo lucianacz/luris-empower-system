@@ -1,0 +1,124 @@
+export interface WorkspaceTotal {
+  currency: string;
+  income: number;
+  spending: number;
+  internalMovement: number;
+  fees: number;
+}
+
+export interface WorkspaceAccount {
+  id: string;
+  institution: string;
+  name: string;
+  currency: string;
+  last_imported_at: string | null;
+  last_transaction_at: string | null;
+  coverage_start: string | null;
+  coverage_end: string | null;
+  coverage_gaps: Array<{ start: string; end: string; days: number }>;
+  overlapping_periods: number;
+}
+
+export interface WorkspaceTransaction {
+  id: string;
+  occurred_at: string;
+  description: string;
+  amount: string;
+  currency: string;
+  kind: string;
+  status: string;
+  excluded_from_totals: boolean;
+  fee_amount: string;
+  category_id: string | null;
+  account: { name: string; institution: string } | null;
+  expense_splits?: Array<{ id: string; split_kind: string; label: string; percentage: string | null; amount: string | null }>;
+}
+
+export interface WorkspaceQuestion {
+  id: string;
+  prompt: string;
+  question_type: string;
+  created_at: string;
+  transaction_id: string | null;
+  context: Record<string, unknown>;
+}
+
+export interface TransferMember {
+  sequence: number;
+  allocated_amount: string | null;
+  allocated_currency: string | null;
+  transaction: WorkspaceTransaction | null;
+}
+
+export interface WorkspaceTransferChain {
+  id: string;
+  status: string;
+  confidence: number;
+  source_amount: string | null;
+  source_currency: string | null;
+  fee_amount: string;
+  notes: string | null;
+  member_count: number;
+  members: TransferMember[];
+}
+
+export interface WorkspaceCategory {
+  id: string;
+  name: string;
+  kind: string;
+  color: string | null;
+  icon: string | null;
+  parent_id: string | null;
+}
+
+export interface WorkspaceInvestment {
+  id: string;
+  quantity: string;
+  cost_basis: string | null;
+  current_value: string | null;
+  realized_profit_loss: string;
+  unrealized_profit_loss: string | null;
+  currency: string;
+  valuation_date: string;
+  asset: { symbol: string | null; name: string; asset_type: string } | null;
+  account: { name: string } | null;
+}
+
+export interface WorkspaceData {
+  mode: "demo" | "signed-out" | "live";
+  totals: WorkspaceTotal[];
+  accounts: WorkspaceAccount[];
+  transactions: WorkspaceTransaction[];
+  questions: WorkspaceQuestion[];
+  transferChains: WorkspaceTransferChain[];
+  imports: Array<{ id: string; account_id?: string | null; file_name: string; status: string; row_count: number; imported_count: number; duplicate_count: number; unresolved_count: number; coverage_start?: string | null; coverage_end?: string | null; confirmed_at: string | null; created_at: string }>;
+  categories: WorkspaceCategory[];
+  investments: WorkspaceInvestment[];
+}
+
+export const demoWorkspace: WorkspaceData = {
+  mode: "demo" as const,
+  totals: [
+    { currency: "USD", income: 6000, spending: 2184.42, internalMovement: 4397.75, fees: 25.75 },
+  ],
+  accounts: [
+    { id: "demo-deel", institution: "deel", name: "Deel USD account", currency: "USD", last_imported_at: "2026-08-29T00:00:00.000Z", last_transaction_at: "2026-08-29T00:00:00.000Z", coverage_start: "2026-01-01", coverage_end: "2026-08-29", coverage_gaps: [], overlapping_periods: 7 },
+    { id: "demo-arq", institution: "arq", name: "ARQ ARS wallet", currency: "ARS", last_imported_at: "2026-08-31T00:00:00.000Z", last_transaction_at: "2026-08-31T00:00:00.000Z", coverage_start: "2025-01-01", coverage_end: "2026-08-31", coverage_gaps: [], overlapping_periods: 0 },
+    { id: "demo-brubank", institution: "brubank", name: "Brubank ARS savings", currency: "ARS", last_imported_at: "2026-08-31T00:00:00.000Z", last_transaction_at: "2026-08-31T00:00:00.000Z", coverage_start: "2025-01-01", coverage_end: "2026-08-31", coverage_gaps: [], overlapping_periods: 0 },
+  ],
+  transactions: [
+    { id: "demo-1", occurred_at: "2026-08-29T00:00:00.000Z", description: "Example client payment", amount: "6000", currency: "USD", kind: "income", status: "posted", excluded_from_totals: false, fee_amount: "0", category_id: null, account: { name: "Deel USD account", institution: "deel" } },
+    { id: "demo-2", occurred_at: "2026-08-22T00:00:00.000Z", description: "Withdrawal to ARQ", amount: "-1300", currency: "USD", kind: "transfer", status: "posted", excluded_from_totals: true, fee_amount: "9.75", category_id: null, account: { name: "Deel USD account", institution: "deel" } },
+    { id: "demo-3", occurred_at: "2026-08-20T00:00:00.000Z", description: "Example grocery market", amount: "-84.2", currency: "USD", kind: "expense", status: "posted", excluded_from_totals: false, fee_amount: "0", category_id: null, account: { name: "Deel USD account", institution: "deel" } },
+  ],
+  questions: [
+    { id: "demo-q1", prompt: "Is this incoming ARQ movement a transfer or income?", question_type: "classification", created_at: "2026-08-31T00:00:00.000Z", transaction_id: "demo-4", context: {} },
+    { id: "demo-q2", prompt: "How was this cash withdrawal used?", question_type: "cash_withdrawal", created_at: "2026-08-17T00:00:00.000Z", transaction_id: "demo-5", context: {} },
+  ],
+  transferChains: [
+    { id: "demo-chain-1", status: "suggested", confidence: 0.96, source_amount: "1290.25", source_currency: "USD", fee_amount: "9.75", notes: "Deel → ARQ → Brubank", member_count: 4, members: [] },
+  ],
+  imports: [],
+  categories: [],
+  investments: [],
+};

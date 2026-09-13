@@ -77,6 +77,8 @@ create table public.import_batches (
   imported_count integer not null default 0,
   duplicate_count integer not null default 0,
   unresolved_count integer not null default 0,
+  coverage_start date,
+  coverage_end date,
   confirmed_at timestamptz,
   rolled_back_at timestamptz,
   created_at timestamptz not null default now(),
@@ -351,10 +353,20 @@ using (bucket_id = 'statement-files' and (storage.foldername(name))[1] = auth.ui
 create or replace function public.rollback_import_batch(target_batch_id uuid)
 returns void language plpgsql security invoker set search_path = '' as $$
 declare target_user uuid;
+declare target_account uuid;
 begin
-  select user_id into target_user from public.import_batches where id = target_batch_id;
+  select user_id, account_id into target_user, target_account from public.import_batches where id = target_batch_id;
   if target_user is null or target_user <> auth.uid() then raise exception 'Import batch not found'; end if;
   delete from public.transactions where import_batch_id = target_batch_id;
+  delete from public.transfer_chains chain
+  where chain.user_id = target_user
+    and not exists (select 1 from public.transfer_chain_members member where member.transfer_chain_id = chain.id);
   update public.import_batches set status = 'rolled_back', rolled_back_at = now(), imported_count = 0 where id = target_batch_id;
+  update public.financial_accounts account set
+    last_imported_at = (select max(batch.confirmed_at) from public.import_batches batch where batch.account_id = target_account and batch.id <> target_batch_id and batch.status = 'confirmed'),
+    last_transaction_at = (select max(transaction.occurred_at) from public.transactions transaction where transaction.account_id = target_account),
+    coverage_start = (select min(transaction.occurred_at)::date from public.transactions transaction where transaction.account_id = target_account),
+    coverage_end = (select max(transaction.occurred_at)::date from public.transactions transaction where transaction.account_id = target_account)
+  where account.id = target_account and account.user_id = target_user;
 end;
 $$;

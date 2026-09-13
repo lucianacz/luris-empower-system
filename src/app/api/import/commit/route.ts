@@ -18,6 +18,7 @@ export async function POST(request: Request) {
   if (!user) return Response.json({ error: "Sign in before importing statements." }, { status: 401 });
 
   let batchId: string | null = null;
+  let uploadedStoragePath: string | null = null;
   try {
     const form = await request.formData();
     const file = form.get("file");
@@ -41,7 +42,7 @@ export async function POST(request: Request) {
     const { data: account, error: accountError } = await supabase
       .from("financial_accounts")
       .upsert({ user_id: user.id, institution, name: preview.summary.accountLabel, currency }, { onConflict: "user_id,institution,name,currency" })
-      .select("id")
+      .select("id,coverage_start,coverage_end,last_transaction_at")
       .single();
     if (accountError) throw accountError;
 
@@ -59,6 +60,8 @@ export async function POST(request: Request) {
       warnings: preview.warnings,
       row_count: preview.summary.totalRows,
       unresolved_count: preview.summary.unresolvedRows,
+      coverage_start: preview.summary.dateFrom?.slice(0, 10) ?? null,
+      coverage_end: preview.summary.dateTo?.slice(0, 10) ?? null,
     }).select("id").single();
     if (batchError) throw batchError;
     batchId = batch.id;
@@ -78,15 +81,21 @@ export async function POST(request: Request) {
     const storagePath = `${user.id}/${batch.id}/${safeName}`;
     const { error: uploadError } = await supabase.storage.from("statement-files").upload(storagePath, file, { contentType: file.type || "application/octet-stream", upsert: false });
     if (uploadError) throw uploadError;
+    uploadedStoragePath = storagePath;
     const { error: fileError } = await supabase.from("import_files").insert({ user_id: user.id, import_batch_id: batch.id, storage_path: storagePath, content_type: file.type || null });
     if (fileError) throw fileError;
 
-    const { data: existingTransactions, error: existingError } = await supabase.from("transactions").select("source_transaction_id,fingerprint").eq("user_id", user.id).eq("account_id", account.id);
-    if (existingError) throw existingError;
-    const { accepted, duplicates } = partitionDuplicates(preview.transactions, (existingTransactions ?? []).map((item) => ({ sourceId: item.source_transaction_id, fingerprint: item.fingerprint })));
+    const existingTransactions: Array<{ source_transaction_id: string | null; fingerprint: string }> = [];
+    for (let from = 0; ; from += 1000) {
+      const { data, error } = await supabase.from("transactions").select("source_transaction_id,fingerprint").eq("user_id", user.id).eq("account_id", account.id).range(from, from + 999);
+      if (error) throw error;
+      existingTransactions.push(...(data ?? []));
+      if (!data || data.length < 1000) break;
+    }
+    const { accepted, duplicates } = partitionDuplicates(preview.transactions, existingTransactions.map((item) => ({ sourceId: item.source_transaction_id, fingerprint: item.fingerprint })));
 
     if (accepted.length) {
-      const { data: inserted, error: transactionError } = await supabase.from("transactions").insert(accepted.map((transaction) => ({
+      const transactionRows = accepted.map((transaction) => ({
         user_id: user.id,
         account_id: account.id,
         import_batch_id: batch.id,
@@ -105,8 +114,13 @@ export async function POST(request: Request) {
         kind: transaction.kind,
         excluded_from_totals: transaction.excludedFromTotals,
         metadata: transaction.metadata,
-      }))).select("id,fingerprint");
-      if (transactionError) throw transactionError;
+      }));
+      const inserted: Array<{ id: string; fingerprint: string }> = [];
+      for (let index = 0; index < transactionRows.length; index += 500) {
+        const result = await supabase.from("transactions").insert(transactionRows.slice(index, index + 500)).select("id,fingerprint");
+        if (result.error) throw result.error;
+        inserted.push(...(result.data ?? []));
+      }
       const insertedByFingerprint = new Map((inserted ?? []).map((item) => [item.fingerprint, item.id]));
       const questions = accepted.flatMap((transaction) => transaction.warnings.length || transaction.kind === "unknown" ? [{
         user_id: user.id,
@@ -116,18 +130,21 @@ export async function POST(request: Request) {
         prompt: transaction.kind === "unknown" ? `How should “${transaction.description}” be classified?` : transaction.warnings[0],
         context: { warnings: transaction.warnings, fingerprint: transaction.fingerprint },
       }] : []);
-      if (questions.length) {
-        const { error: questionError } = await supabase.from("questions").insert(questions);
+      for (let index = 0; index < questions.length; index += 250) {
+        const { error: questionError } = await supabase.from("questions").insert(questions.slice(index, index + 250));
         if (questionError) throw questionError;
       }
     }
 
     const dates = accepted.map((transaction) => transaction.occurredAt).sort();
+    const coverageStart = earliestDate(account.coverage_start, dates[0]?.slice(0, 10));
+    const coverageEnd = latestDate(account.coverage_end, dates.at(-1)?.slice(0, 10));
+    const lastTransactionAt = latestDate(account.last_transaction_at, dates.at(-1));
     const { error: accountUpdateError } = await supabase.from("financial_accounts").update({
       last_imported_at: new Date().toISOString(),
-      last_transaction_at: dates.at(-1) ?? null,
-      coverage_start: dates[0]?.slice(0, 10) ?? null,
-      coverage_end: dates.at(-1)?.slice(0, 10) ?? null,
+      last_transaction_at: lastTransactionAt,
+      coverage_start: coverageStart,
+      coverage_end: coverageEnd,
     }).eq("id", account.id);
     if (accountUpdateError) throw accountUpdateError;
 
@@ -157,8 +174,24 @@ export async function POST(request: Request) {
       message: `Imported ${accepted.length} new transaction${accepted.length === 1 ? "" : "s"}.`,
     });
   } catch (error) {
-    if (batchId) await supabase.from("import_batches").delete().eq("id", batchId);
+    if (uploadedStoragePath) await supabase.storage.from("statement-files").remove([uploadedStoragePath]);
+    if (batchId) {
+      await supabase.from("transactions").delete().eq("import_batch_id", batchId).eq("user_id", user.id);
+      await supabase.from("import_batches").delete().eq("id", batchId).eq("user_id", user.id);
+    }
     const message = error instanceof Error ? error.message : "The import could not be confirmed.";
     return Response.json({ error: message }, { status: 422 });
   }
+}
+
+function earliestDate(left: string | null | undefined, right: string | null | undefined) {
+  if (!left) return right ?? null;
+  if (!right) return left;
+  return left < right ? left : right;
+}
+
+function latestDate(left: string | null | undefined, right: string | null | undefined) {
+  if (!left) return right ?? null;
+  if (!right) return left;
+  return left > right ? left : right;
 }

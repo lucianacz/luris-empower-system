@@ -1,251 +1,190 @@
 "use client";
 
 import {
-  ArrowDownRight,
-  ArrowUpRight,
-  ChevronRight,
-  CircleHelp,
-  FileUp,
-  Landmark,
-  LayoutDashboard,
-  Link2,
-  Menu,
-  PiggyBank,
-  Settings2,
-  ShieldCheck,
-  Sparkles,
-  WalletCards,
+  ArrowDownRight, ArrowUpRight, Check, ChevronRight, CircleHelp, FileUp,
+  Landmark, LayoutDashboard, Link2, Menu, PiggyBank, RefreshCw, Search,
+  Settings2, ShieldCheck, Sparkles, Trash2, WalletCards, X,
 } from "lucide-react";
-import { useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { ImportWorkspace } from "@/components/import-workspace";
+import { demoWorkspace, type WorkspaceData } from "@/lib/workspace/demo";
 
 type View = "overview" | "imports" | "transactions" | "transfers" | "questions" | "investments" | "settings";
+type Mutate = (url: string, method: "PATCH" | "PUT" | "DELETE" | "POST", body?: unknown) => Promise<void>;
 
 const viewTitles: Record<View, string> = {
-  overview: "Your money, connected.",
-  imports: "Import statements",
-  transactions: "All transactions",
-  transfers: "Transfer chains",
-  questions: "Questions inbox",
-  investments: "Investments",
-  settings: "Settings",
+  overview: "Your money, connected.", imports: "Import statements", transactions: "All transactions",
+  transfers: "Transfer chains", questions: "Questions inbox", investments: "Investments",
+  settings: "Settings & import history",
 };
-
-const accounts = [
-  { name: "Deel", meta: "USD account", status: "Updated Aug 29", tone: "forest" },
-  { name: "ARQ", meta: "ARS wallet", status: "Updated Aug 31", tone: "amber" },
-  { name: "Brubank", meta: "ARS savings", status: "Updated Aug 31", tone: "purple" },
-];
-
-const transfers = [
-  { from: "Deel", to: "ARQ", amount: "$1,290.25", date: "Aug 22", confidence: "Matched" },
-  { from: "ARQ", to: "Brubank", amount: "ARS 1,014,329", date: "Aug 25", confidence: "Review" },
-];
 
 export function EmpowerDashboard() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [currentView, setCurrentView] = useState<View>("overview");
-  const navigate = (view: View) => {
-    setCurrentView(view);
-    setMenuOpen(false);
+  const [workspace, setWorkspace] = useState<WorkspaceData>(demoWorkspace);
+  const [loading, setLoading] = useState(true);
+  const [notice, setNotice] = useState("");
+
+  const refresh = useCallback(async () => {
+    try {
+      const response = await fetch("/api/workspace", { cache: "no-store" });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Workspace data could not be loaded.");
+      setWorkspace(result);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Workspace data could not be loaded.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const initialRefresh = window.setTimeout(() => void refresh(), 0);
+    const handleRefresh = () => void refresh();
+    window.addEventListener("empower:refresh", handleRefresh);
+    return () => {
+      window.clearTimeout(initialRefresh);
+      window.removeEventListener("empower:refresh", handleRefresh);
+    };
+  }, [refresh]);
+
+  const navigate = (view: View) => { setCurrentView(view); setMenuOpen(false); };
+  const mutate: Mutate = async (url, method, body) => {
+    setNotice("");
+    const response = await fetch(url, { method, headers: body === undefined ? undefined : { "Content-Type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "The change could not be saved.");
+    setNotice(result.message || "Saved.");
+    await refresh();
   };
 
   return (
     <div className="min-h-screen lg:grid lg:grid-cols-[240px_1fr]">
-      <aside
-        className={`${menuOpen ? "flex" : "hidden"} fixed inset-y-0 left-0 z-30 w-[240px] flex-col border-r border-[var(--line)] bg-[var(--surface)] px-4 py-5 lg:static lg:flex lg:w-auto`}
-        aria-label="Primary navigation"
-      >
+      <aside className={`${menuOpen ? "flex" : "hidden"} fixed inset-y-0 left-0 z-30 w-[240px] flex-col border-r border-[var(--line)] bg-[var(--surface)] px-4 py-5 lg:static lg:flex lg:w-auto`} aria-label="Primary navigation">
         <div className="flex items-center gap-3 px-2">
-          <span className="grid size-10 place-items-center rounded-[14px] bg-[var(--forest)] text-white shadow-[0_8px_24px_rgba(33,78,69,0.22)]">
-            <Sparkles aria-hidden="true" className="size-5" />
-          </span>
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">Luris</p>
-            <p className="text-lg font-semibold tracking-[-0.03em]">Empower</p>
-          </div>
+          <span className="grid size-10 place-items-center rounded-[14px] bg-[var(--forest)] text-white shadow-[0_8px_24px_rgba(33,78,69,0.22)]"><Sparkles aria-hidden="true" className="size-5" /></span>
+          <div><p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">Luris</p><p className="text-lg font-semibold tracking-[-0.03em]">Empower</p></div>
         </div>
-
         <nav className="mt-10 space-y-1 text-sm" aria-label="Workspace">
           <NavItem icon={LayoutDashboard} label="Overview" active={currentView === "overview"} onSelect={() => navigate("overview")} />
           <NavItem icon={FileUp} label="Imports" active={currentView === "imports"} onSelect={() => navigate("imports")} />
           <NavItem icon={WalletCards} label="Transactions" active={currentView === "transactions"} onSelect={() => navigate("transactions")} />
-          <NavItem icon={Link2} label="Transfer chains" badge="2" active={currentView === "transfers"} onSelect={() => navigate("transfers")} />
-          <NavItem icon={CircleHelp} label="Questions" badge="4" active={currentView === "questions"} onSelect={() => navigate("questions")} />
+          <NavItem icon={Link2} label="Transfer chains" badge={String(workspace.transferChains.filter((chain) => chain.status === "suggested").length)} active={currentView === "transfers"} onSelect={() => navigate("transfers")} />
+          <NavItem icon={CircleHelp} label="Questions" badge={String(workspace.questions.length)} active={currentView === "questions"} onSelect={() => navigate("questions")} />
           <NavItem icon={PiggyBank} label="Investments" active={currentView === "investments"} onSelect={() => navigate("investments")} />
         </nav>
-
         <div className="mt-auto space-y-2">
-          <div className="rounded-2xl border border-[var(--line)] bg-[var(--paper)] p-3.5">
-            <div className="flex items-center gap-2 text-xs font-semibold">
-              <ShieldCheck aria-hidden="true" className="size-4 text-[var(--forest)]" />
-              Private by design
-            </div>
-            <p className="mt-2 text-xs leading-5 text-[var(--muted)]">Your files stay tied to your account and can be rolled back by import.</p>
-          </div>
+          <div className="rounded-2xl border border-[var(--line)] bg-[var(--paper)] p-3.5"><div className="flex items-center gap-2 text-xs font-semibold"><ShieldCheck aria-hidden="true" className="size-4 text-[var(--forest)]" />Private by design</div><p className="mt-2 text-xs leading-5 text-[var(--muted)]">Files stay tied to your account and each import can be rolled back.</p></div>
           <NavItem icon={Settings2} label="Settings" active={currentView === "settings"} onSelect={() => navigate("settings")} />
         </div>
       </aside>
-
       {menuOpen ? <button className="fixed inset-0 z-20 bg-black/30 lg:hidden" aria-label="Close navigation" onClick={() => setMenuOpen(false)} /> : null}
 
       <main className="min-w-0 px-4 pb-12 pt-4 sm:px-6 lg:px-10 lg:pt-8">
         <header className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <button className="grid size-10 place-items-center rounded-xl border border-[var(--line)] bg-[var(--surface)] lg:hidden" aria-label="Open navigation" onClick={() => setMenuOpen(true)}>
-              <Menu aria-hidden="true" className="size-5" />
-            </button>
-            <div>
-              <p className="text-xs font-medium uppercase tracking-[0.15em] text-[var(--muted)]">September 2026</p>
-              <h1 className="mt-1 text-2xl font-semibold tracking-[-0.04em] sm:text-3xl">{viewTitles[currentView]}</h1>
-            </div>
-          </div>
-          <button onClick={() => navigate("imports")} className="inline-flex h-11 items-center gap-2 rounded-xl bg-[var(--forest)] px-4 text-sm font-semibold text-white shadow-[0_8px_22px_rgba(33,78,69,0.18)] transition hover:bg-[#173d35]">
-            <FileUp aria-hidden="true" className="size-4" />
-            <span className="hidden sm:inline">Import statements</span>
-            <span className="sm:hidden">Import</span>
-          </button>
+          <div className="flex items-center gap-3"><button className="grid size-10 place-items-center rounded-xl border border-[var(--line)] bg-[var(--surface)] lg:hidden" aria-label="Open navigation" onClick={() => setMenuOpen(true)}><Menu aria-hidden="true" className="size-5" /></button><div><p className="text-xs font-medium uppercase tracking-[0.15em] text-[var(--muted)]">Financial workspace</p><h1 className="mt-1 text-2xl font-semibold tracking-[-0.04em] sm:text-3xl">{viewTitles[currentView]}</h1></div></div>
+          <button onClick={() => navigate("imports")} className="inline-flex h-11 items-center gap-2 rounded-xl bg-[var(--forest)] px-4 text-sm font-semibold text-white shadow-[0_8px_22px_rgba(33,78,69,0.18)] transition hover:bg-[#173d35]"><FileUp aria-hidden="true" className="size-4" /><span className="hidden sm:inline">Import statements</span><span className="sm:hidden">Import</span></button>
         </header>
-
-        {currentView === "imports" ? <ImportWorkspace /> : currentView !== "overview" ? <FeatureView view={currentView} /> : <>
-        <section className="mt-8 grid gap-4 sm:grid-cols-3" aria-label="Monthly summary">
-          <Metric label="Income" value="$6,000.00" note="Original client payments" icon={ArrowDownRight} tone="green" />
-          <Metric label="Spending" value="$2,184.42" note="Purchases, fees and taxes" icon={ArrowUpRight} tone="amber" />
-          <Metric label="Internal movement" value="$4,397.75" note="Excluded from totals" icon={Link2} tone="plain" />
-        </section>
-
-        <section className="mt-5 grid gap-5 xl:grid-cols-[1.15fr_0.85fr]">
-          <article className="overflow-hidden rounded-[22px] border border-[var(--line)] bg-[var(--surface)] shadow-[0_18px_50px_rgba(37,45,42,0.06)]">
-            <div className="flex items-start justify-between gap-4 border-b border-[var(--line)] px-5 py-5 sm:px-6">
-              <div>
-                <h2 className="font-semibold tracking-[-0.02em]">Account coverage</h2>
-                <p className="mt-1 text-sm text-[var(--muted)]">Latest statement and transaction dates</p>
-              </div>
-              <button className="text-sm font-semibold text-[var(--forest)]">View all</button>
-            </div>
-            <div className="divide-y divide-[var(--line)]">
-              {accounts.map((account) => (
-                <button key={account.name} className="flex w-full items-center gap-4 px-5 py-4 text-left transition hover:bg-[var(--paper)] sm:px-6">
-                  <span className={`grid size-10 place-items-center rounded-xl account-${account.tone}`}>
-                    <Landmark aria-hidden="true" className="size-4" />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block font-semibold">{account.name}</span>
-                    <span className="block text-sm text-[var(--muted)]">{account.meta}</span>
-                  </span>
-                  <span className="hidden text-right sm:block">
-                    <span className="block text-sm font-medium">{account.status}</span>
-                    <span className="block text-xs text-[var(--muted)]">No gaps detected</span>
-                  </span>
-                  <ChevronRight aria-hidden="true" className="size-4 text-[var(--muted)]" />
-                </button>
-              ))}
-            </div>
-          </article>
-
-          <article className="rounded-[22px] border border-[var(--line)] bg-[var(--forest)] p-5 text-white shadow-[0_18px_50px_rgba(33,78,69,0.18)] sm:p-6">
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <h2 className="font-semibold tracking-[-0.02em]">Transfer chains</h2>
-                <p className="mt-1 text-sm text-white/65">How income moved between your accounts</p>
-              </div>
-              <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-semibold">2 paths</span>
-            </div>
-
-            <div className="mt-7 space-y-3">
-              {transfers.map((transfer) => (
-                <div key={`${transfer.from}-${transfer.to}`} className="rounded-2xl border border-white/10 bg-white/[0.07] p-4">
-                  <div className="flex items-center gap-3">
-                    <span className="grid size-9 place-items-center rounded-full bg-white/10 text-xs font-bold">{transfer.from.slice(0, 1)}</span>
-                    <span className="h-px flex-1 bg-white/25" />
-                    <ChevronRight aria-hidden="true" className="size-4 text-[#efb180]" />
-                    <span className="h-px flex-1 bg-white/25" />
-                    <span className="grid size-9 place-items-center rounded-full bg-[#efb180] text-xs font-bold text-[var(--ink)]">{transfer.to.slice(0, 1)}</span>
-                  </div>
-                  <div className="mt-3 flex items-end justify-between gap-4">
-                    <div>
-                      <p className="text-sm font-semibold">{transfer.from} to {transfer.to}</p>
-                      <p className="mt-0.5 text-xs text-white/60">{transfer.date} · {transfer.confidence}</p>
-                    </div>
-                    <p className="font-mono text-sm">{transfer.amount}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </article>
-        </section>
-
-        <section className="mt-5 grid gap-5 lg:grid-cols-[1fr_320px]">
-          <article className="rounded-[22px] border border-dashed border-[#b8b0a3] bg-[rgba(255,253,248,0.55)] p-6 sm:flex sm:items-center sm:justify-between sm:gap-8">
-            <div className="flex items-start gap-4">
-              <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-[var(--amber-soft)] text-[var(--amber)]">
-                <FileUp aria-hidden="true" className="size-5" />
-              </span>
-              <div>
-                <h2 className="font-semibold">Monthly update</h2>
-                <p className="mt-1 max-w-xl text-sm leading-6 text-[var(--muted)]">Drop Deel, ARQ, Brubank or Payoneer exports here. Empower previews changes and finds duplicates before anything is saved.</p>
-              </div>
-            </div>
-            <button className="mt-5 whitespace-nowrap rounded-xl border border-[var(--line)] bg-[var(--surface)] px-4 py-2.5 text-sm font-semibold shadow-sm sm:mt-0">Choose files</button>
-          </article>
-
-          <article className="rounded-[22px] border border-[var(--line)] bg-[var(--surface)] p-5">
-            <div className="flex items-center gap-3">
-              <span className="grid size-9 place-items-center rounded-xl bg-[var(--amber-soft)] text-[var(--amber)]"><CircleHelp aria-hidden="true" className="size-4" /></span>
-              <div>
-                <p className="font-semibold">4 questions</p>
-                <p className="text-xs text-[var(--muted)]">Need your confirmation</p>
-              </div>
-              <ChevronRight aria-hidden="true" className="ml-auto size-4 text-[var(--muted)]" />
-            </div>
-          </article>
-        </section>
-        </>}
+        {workspace.mode !== "live" && !loading ? <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#e3bf9f] bg-[#fbefe4] px-4 py-3 text-sm text-[#74411f]"><span><strong>Demo mode.</strong> Previews work now; sign in and connect Supabase to save private data.</span><a href="/login" className="font-semibold underline underline-offset-4">Sign in</a></div> : null}
+        {notice ? <div role="status" className="mt-5 flex items-center justify-between gap-3 rounded-xl border border-[var(--line)] bg-[var(--surface)] px-4 py-3 text-sm"><span>{notice}</span><button aria-label="Dismiss message" onClick={() => setNotice("")}><X aria-hidden="true" className="size-4" /></button></div> : null}
+        {currentView === "imports" ? <ImportWorkspace /> : null}
+        {currentView === "overview" ? <Overview workspace={workspace} loading={loading} navigate={navigate} /> : null}
+        {currentView === "transactions" ? <TransactionsView workspace={workspace} mutate={mutate} /> : null}
+        {currentView === "transfers" ? <TransfersView workspace={workspace} mutate={mutate} /> : null}
+        {currentView === "questions" ? <QuestionsView workspace={workspace} mutate={mutate} /> : null}
+        {currentView === "investments" ? <InvestmentsView workspace={workspace} mutate={mutate} /> : null}
+        {currentView === "settings" ? <SettingsView workspace={workspace} mutate={mutate} /> : null}
       </main>
     </div>
   );
 }
 
-function NavItem({ icon: Icon, label, active = false, badge, onSelect }: { icon: typeof LayoutDashboard; label: string; active?: boolean; badge?: string; onSelect: () => void }) {
-  return (
-    <button onClick={onSelect} className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left font-medium transition ${active ? "bg-[var(--forest-soft)] text-[var(--forest)]" : "text-[var(--muted)] hover:bg-[var(--paper)] hover:text-[var(--ink)]"}`} aria-current={active ? "page" : undefined}>
-      <Icon aria-hidden="true" className="size-[18px]" />
-      <span>{label}</span>
-      {badge ? <span className="ml-auto rounded-full bg-[var(--amber-soft)] px-2 py-0.5 text-[11px] font-bold text-[#8a4b21]">{badge}</span> : null}
-    </button>
-  );
-}
-
-function FeatureView({ view }: { view: Exclude<View, "overview" | "imports"> }) {
-  const content = {
-    transactions: { title: "Normalized ledger", body: "Search, filter, categorize, and split imported activity without changing the source statement.", action: "Import transactions" },
-    transfers: { title: "Follow the full path", body: "Suggested matches support currency conversion, date differences, fees, partial allocations, and multi-step account chains.", action: "Review matches" },
-    questions: { title: "Resolve only what is uncertain", body: "Unknown incoming movements, cash withdrawals, and low-confidence transfer matches wait here before affecting totals.", action: "Open next question" },
-    investments: { title: "Portfolio records are separate", body: "The Alpaca statement was recognized as investment data. Manual positions and snapshots are supported by the database while automated investment parsing remains deferred.", action: "Add a position" },
-    settings: { title: "Workspace settings", body: "Choose a reporting currency, manage accounts, reusable import mappings, and secure statement retention.", action: "Connect Supabase" },
-  }[view];
-  return (
-    <section className="mt-8 grid min-h-[520px] place-items-center rounded-[24px] border border-[var(--line)] bg-[var(--surface)] p-8 text-center">
-      <div className="max-w-lg">
-        <span className="mx-auto grid size-12 place-items-center rounded-2xl bg-[var(--forest-soft)] text-[var(--forest)]"><Sparkles aria-hidden="true" className="size-5" /></span>
-        <h2 className="mt-5 text-xl font-semibold">{content.title}</h2>
-        <p className="mt-2 text-sm leading-6 text-[var(--muted)]">{content.body}</p>
-        <button className="mt-6 rounded-xl border border-[var(--line)] bg-[var(--paper)] px-4 py-2.5 text-sm font-semibold">{content.action}</button>
-      </div>
+function Overview({ workspace, loading, navigate }: { workspace: WorkspaceData; loading: boolean; navigate: (view: View) => void }) {
+  const primary = workspace.totals.find((total) => total.currency === "USD") ?? workspace.totals[0];
+  return <>
+    <section className="mt-8 grid gap-4 sm:grid-cols-3" aria-label="Financial summary">
+      <Metric label="Income" value={loading ? "Loading…" : formatTotal(primary?.income, primary?.currency)} note="Original client payments" icon={ArrowDownRight} tone="green" />
+      <Metric label="Spending" value={loading ? "Loading…" : formatTotal(primary?.spending, primary?.currency)} note="Purchases, fees and taxes" icon={ArrowUpRight} tone="amber" />
+      <Metric label="Internal movement" value={loading ? "Loading…" : formatTotal(primary?.internalMovement, primary?.currency)} note="Visible, but excluded" icon={Link2} tone="plain" />
     </section>
-  );
+    {workspace.totals.length > 1 ? <div className="mt-3 flex flex-wrap gap-2 text-xs text-[var(--muted)]">Other currencies: {workspace.totals.filter((total) => total !== primary).map((total) => <span key={total.currency} className="rounded-full bg-[var(--surface)] px-3 py-1.5">{total.currency}: {formatMoney(total.spending, total.currency)} spent</span>)}</div> : null}
+    <section className="mt-5 grid gap-5 xl:grid-cols-[1.15fr_0.85fr]">
+      <article className="overflow-hidden rounded-[22px] border border-[var(--line)] bg-[var(--surface)] shadow-[0_18px_50px_rgba(37,45,42,0.06)]">
+        <SectionHeading title="Account coverage" subtitle="Latest statement and transaction dates" action="Import update" onAction={() => navigate("imports")} />
+        <div className="divide-y divide-[var(--line)]">{workspace.accounts.length ? workspace.accounts.map((account, index) => <button key={account.id} onClick={() => navigate("transactions")} className="flex w-full items-center gap-4 px-5 py-4 text-left transition hover:bg-[var(--paper)] sm:px-6"><span className={`grid size-10 place-items-center rounded-xl ${index % 3 === 0 ? "account-forest" : index % 3 === 1 ? "account-amber" : "account-purple"}`}><Landmark aria-hidden="true" className="size-4" /></span><span className="min-w-0 flex-1"><span className="block font-semibold">{account.name}</span><span className="block text-sm text-[var(--muted)]">{account.institution.toUpperCase()} · {account.currency}</span></span><span className="hidden text-right sm:block"><span className="block text-sm font-medium">{account.last_transaction_at ? `Last transaction ${formatDate(account.last_transaction_at)}` : "No transactions"}</span><span className="block text-xs text-[var(--muted)]">{account.last_imported_at ? `Imported ${formatDate(account.last_imported_at)} · ` : ""}{coverageLabel(account)}</span></span><ChevronRight aria-hidden="true" className="size-4 text-[var(--muted)]" /></button>) : <Empty text="Import a statement to create the first account." />}</div>
+      </article>
+      <article className="rounded-[22px] border border-[var(--line)] bg-[var(--forest)] p-5 text-white shadow-[0_18px_50px_rgba(33,78,69,0.18)] sm:p-6">
+        <div className="flex items-center justify-between gap-4"><div><h2 className="font-semibold tracking-[-0.02em]">Transfer chains</h2><p className="mt-1 text-sm text-white/65">How money moved between your accounts</p></div><span className="rounded-full bg-white/10 px-3 py-1 text-xs font-semibold">{workspace.transferChains.length} paths</span></div>
+        <div className="mt-7 space-y-3">{workspace.transferChains.slice(0, 2).map((chain) => <div key={chain.id} className="rounded-2xl border border-white/10 bg-white/[0.07] p-4"><div className="flex items-center gap-3"><span className="grid size-9 place-items-center rounded-full bg-white/10 text-xs font-bold">{chain.members[0]?.transaction?.account?.institution?.slice(0, 1).toUpperCase() ?? "A"}</span><span className="h-px flex-1 bg-white/25" /><ChevronRight aria-hidden="true" className="size-4 text-[#efb180]" /><span className="h-px flex-1 bg-white/25" /><span className="grid size-9 place-items-center rounded-full bg-[#efb180] text-xs font-bold text-[var(--ink)]">{chain.members.at(-1)?.transaction?.account?.institution?.slice(0, 1).toUpperCase() ?? "B"}</span></div><div className="mt-3 flex items-end justify-between gap-4"><div><p className="text-sm font-semibold">{chain.notes || `${chain.member_count}-movement chain`}</p><p className="mt-0.5 text-xs text-white/60">{Math.round(Number(chain.confidence) * 100)}% confidence · {chain.status}</p></div><p className="font-mono text-sm">{formatMoney(chain.source_amount, chain.source_currency)}</p></div></div>)}{!workspace.transferChains.length ? <p className="rounded-2xl border border-white/10 bg-white/[0.07] p-4 text-sm text-white/65">Transfer suggestions appear after multiple accounts are imported.</p> : null}</div>
+        <button onClick={() => navigate("transfers")} className="mt-5 text-sm font-semibold text-[#efb180]">Review all chains →</button>
+      </article>
+    </section>
+    <section className="mt-5 grid gap-5 lg:grid-cols-[1fr_320px]">
+      <button onClick={() => navigate("imports")} className="rounded-[22px] border border-dashed border-[#b8b0a3] bg-[rgba(255,253,248,0.55)] p-6 text-left sm:flex sm:items-center sm:justify-between sm:gap-8"><span className="flex items-start gap-4"><span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-[var(--amber-soft)] text-[var(--amber)]"><FileUp aria-hidden="true" className="size-5" /></span><span><span className="block font-semibold">Monthly update</span><span className="mt-1 block max-w-xl text-sm leading-6 text-[var(--muted)]">Drop current Deel, ARQ, Brubank, or Payoneer exports. Only unseen rows are imported.</span></span></span><span className="mt-5 block whitespace-nowrap rounded-xl border border-[var(--line)] bg-[var(--surface)] px-4 py-2.5 text-sm font-semibold shadow-sm sm:mt-0">Choose files</span></button>
+      <button onClick={() => navigate("questions")} className="rounded-[22px] border border-[var(--line)] bg-[var(--surface)] p-5 text-left"><span className="flex items-center gap-3"><span className="grid size-9 place-items-center rounded-xl bg-[var(--amber-soft)] text-[var(--amber)]"><CircleHelp aria-hidden="true" className="size-4" /></span><span><span className="block font-semibold">{workspace.questions.length} questions</span><span className="text-xs text-[var(--muted)]">Need your confirmation</span></span><ChevronRight aria-hidden="true" className="ml-auto size-4 text-[var(--muted)]" /></span></button>
+    </section>
+  </>;
 }
 
-function Metric({ label, value, note, icon: Icon, tone }: { label: string; value: string; note: string; icon: typeof ArrowDownRight; tone: "green" | "amber" | "plain" }) {
-  const toneClass = tone === "green" ? "bg-[var(--forest-soft)] text-[var(--forest)]" : tone === "amber" ? "bg-[var(--amber-soft)] text-[var(--amber)]" : "bg-[var(--paper-deep)] text-[var(--muted)]";
-  return (
-    <article className="rounded-[20px] border border-[var(--line)] bg-[var(--surface)] p-5 shadow-[0_12px_34px_rgba(37,45,42,0.04)]">
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-sm font-medium text-[var(--muted)]">{label}</p>
-        <span className={`grid size-8 place-items-center rounded-xl ${toneClass}`}><Icon aria-hidden="true" className="size-4" /></span>
-      </div>
-      <p className="mt-4 text-2xl font-semibold tracking-[-0.04em]">{value}</p>
-      <p className="mt-1 text-xs text-[var(--muted)]">{note}</p>
-    </article>
-  );
+function TransactionsView({ workspace, mutate }: { workspace: WorkspaceData; mutate: Mutate }) {
+  const [search, setSearch] = useState("");
+  const visible = useMemo(() => workspace.transactions.filter((transaction) => `${transaction.description} ${transaction.account?.name ?? ""}`.toLowerCase().includes(search.toLowerCase())), [search, workspace.transactions]);
+  const live = workspace.mode === "live";
+  const saveCategory = async (transactionId: string, categoryId: string) => { try { await mutate(`/api/transactions/${transactionId}`, "PATCH", { categoryId: categoryId || null }); } catch (error) { window.alert(messageOf(error)); } };
+  const saveSplit = async (transactionId: string, shared: boolean) => { const splits = shared ? [{ kind: "personal", label: "My share", percentage: 0.5 }, { kind: "household_member", label: "Household share", percentage: 0.5 }] : [{ kind: "personal", label: "Personal", percentage: 1 }]; try { await mutate(`/api/transactions/${transactionId}/splits`, "PUT", { splits }); } catch (error) { window.alert(messageOf(error)); } };
+  return <section className="mt-8 space-y-5">
+    <div className="flex flex-wrap items-center justify-between gap-3"><label className="relative min-w-[260px] flex-1 sm:max-w-sm"><span className="sr-only">Search transactions</span><Search aria-hidden="true" className="absolute left-3 top-3 size-4 text-[var(--muted)]" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search descriptions or accounts" className="h-10 w-full rounded-xl border border-[var(--line)] bg-[var(--surface)] pl-9 pr-3 text-sm" /></label><span className="text-sm text-[var(--muted)]">{visible.length} normalized movements</span></div>
+    <article className="overflow-x-auto rounded-[22px] border border-[var(--line)] bg-[var(--surface)]"><table className="w-full min-w-[980px] text-left text-sm"><thead className="bg-[var(--paper)] text-xs uppercase tracking-[0.08em] text-[var(--muted)]"><tr><th className="px-4 py-3">Date</th><th className="px-4 py-3">Description</th><th className="px-4 py-3">Account</th><th className="px-4 py-3">Treatment</th><th className="px-4 py-3">Category</th><th className="px-4 py-3">Household</th><th className="px-4 py-3 text-right">Amount</th></tr></thead><tbody className="divide-y divide-[var(--line)]">{visible.map((transaction) => <tr key={transaction.id} className="align-top"><td className="whitespace-nowrap px-4 py-3">{formatDate(transaction.occurred_at)}</td><td className="max-w-[280px] px-4 py-3"><p className="truncate font-medium">{transaction.description}</p>{transaction.excluded_from_totals ? <p className="mt-1 text-xs text-[var(--muted)]">Excluded from totals</p> : null}</td><td className="px-4 py-3">{transaction.account?.name ?? "Unknown"}</td><td className="px-4 py-3"><KindBadge kind={transaction.kind} /></td><td className="px-4 py-3"><select aria-label={`Category for ${transaction.description}`} disabled={!live} value={transaction.category_id ?? ""} onChange={(event) => void saveCategory(transaction.id, event.target.value)} className="h-9 max-w-36 rounded-lg border border-[var(--line)] bg-white px-2 text-xs"><option value="">Uncategorized</option>{workspace.categories.filter((category) => category.kind === "expense" || category.kind === transaction.kind).map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></td><td className="whitespace-nowrap px-4 py-3">{transaction.kind === "expense" ? <div className="flex gap-1"><button disabled={!live} onClick={() => void saveSplit(transaction.id, false)} className="rounded-lg border border-[var(--line)] px-2 py-1 text-xs disabled:opacity-45">Personal</button><button disabled={!live} onClick={() => void saveSplit(transaction.id, true)} className="rounded-lg border border-[var(--line)] px-2 py-1 text-xs disabled:opacity-45">50/50</button></div> : "—"}</td><td className={`whitespace-nowrap px-4 py-3 text-right font-mono ${Number(transaction.amount) < 0 ? "text-[var(--danger)]" : "text-[var(--forest)]"}`}>{formatMoney(transaction.amount, transaction.currency)}</td></tr>)}{!visible.length ? <tr><td colSpan={7}><Empty text="No matching transactions." /></td></tr> : null}</tbody></table></article>
+    <CategoryCreator disabled={!live} mutate={mutate} />
+  </section>;
 }
+
+function CategoryCreator({ disabled, mutate }: { disabled: boolean; mutate: Mutate }) {
+  const submit = async (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); const form = event.currentTarget; const data = new FormData(form); try { await mutate("/api/categories", "POST", { name: data.get("name"), kind: data.get("kind") }); form.reset(); } catch (error) { window.alert(messageOf(error)); } };
+  return <form onSubmit={(event) => void submit(event)} className="flex flex-wrap items-end gap-3 rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-4"><label className="text-xs font-semibold">New category<input required disabled={disabled} name="name" className="mt-1 block h-10 rounded-xl border border-[var(--line)] px-3 text-sm font-normal" placeholder="e.g. Groceries" /></label><label className="text-xs font-semibold">Type<select disabled={disabled} name="kind" className="mt-1 block h-10 rounded-xl border border-[var(--line)] bg-white px-3 text-sm font-normal"><option value="expense">Expense</option><option value="income">Income</option><option value="investment">Investment</option></select></label><button disabled={disabled} className="h-10 rounded-xl bg-[var(--forest)] px-4 text-sm font-semibold text-white disabled:opacity-45">Add category</button></form>;
+}
+
+function QuestionsView({ workspace, mutate }: { workspace: WorkspaceData; mutate: Mutate }) {
+  const live = workspace.mode === "live";
+  const resolve = async (id: string, body: Record<string, unknown>) => { try { await mutate(`/api/questions/${id}`, "PATCH", body); } catch (error) { window.alert(messageOf(error)); } };
+  return <section className="mt-8 space-y-4">{workspace.questions.map((question) => <article key={question.id} className="rounded-[20px] border border-[var(--line)] bg-[var(--surface)] p-5"><div className="flex items-start gap-4"><span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[var(--amber-soft)] text-[var(--amber)]"><CircleHelp aria-hidden="true" className="size-5" /></span><div className="min-w-0 flex-1"><p className="font-semibold">{question.prompt}</p><p className="mt-1 text-xs uppercase tracking-[0.08em] text-[var(--muted)]">{question.question_type.replaceAll("_", " ")} · {formatDate(question.created_at)}</p><div className="mt-4 flex flex-wrap gap-2"><Decision disabled={!live} label="Expense" onClick={() => void resolve(question.id, { status: "resolved", kind: "expense", excludedFromTotals: false })} /><Decision disabled={!live} label="Owned transfer" onClick={() => void resolve(question.id, { status: "resolved", kind: "transfer", excludedFromTotals: true })} /><Decision disabled={!live} label="Income" onClick={() => void resolve(question.id, { status: "resolved", kind: "income", excludedFromTotals: false })} /><Decision disabled={!live} label="Cash withdrawal" onClick={() => void resolve(question.id, { status: "resolved", kind: "cash_withdrawal", excludedFromTotals: true })} /><button disabled={!live} onClick={() => void resolve(question.id, { status: "dismissed" })} className="rounded-xl px-3 py-2 text-sm text-[var(--muted)] disabled:opacity-45">Dismiss</button></div></div></div></article>)}{!workspace.questions.length ? <EmptyPanel icon={Check} title="Inbox cleared" body="There are no unresolved rows. New ambiguous activity will wait here before affecting totals." /> : null}</section>;
+}
+
+function TransfersView({ workspace, mutate }: { workspace: WorkspaceData; mutate: Mutate }) {
+  const live = workspace.mode === "live";
+  const decide = async (id: string, status: "confirmed" | "rejected") => { try { await mutate(`/api/transfers/${id}`, "PATCH", { status }); } catch (error) { window.alert(messageOf(error)); } };
+  const rebuild = async () => { try { await mutate("/api/transfers/rebuild", "POST"); } catch (error) { window.alert(messageOf(error)); } };
+  return <section className="mt-8 space-y-4"><div className="flex justify-end"><button disabled={!live} onClick={() => void rebuild()} className="inline-flex items-center gap-2 rounded-xl border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-sm font-semibold disabled:opacity-45"><RefreshCw aria-hidden="true" className="size-4" /> Rebuild suggestions</button></div>{workspace.transferChains.map((chain) => <article key={chain.id} className="rounded-[22px] border border-[var(--line)] bg-[var(--surface)] p-5 sm:p-6"><div className="flex flex-wrap items-start justify-between gap-4"><div><div className="flex items-center gap-2"><KindBadge kind={chain.status} /><span className="text-sm font-semibold">{Math.round(Number(chain.confidence) * 100)}% confidence</span></div><h2 className="mt-3 text-lg font-semibold">{chain.notes || "Owned-account movement"}</h2><p className="mt-1 text-sm text-[var(--muted)]">Principal {formatMoney(chain.source_amount, chain.source_currency)} · Fees {formatMoney(chain.fee_amount, chain.source_currency)}</p></div>{chain.status === "suggested" ? <div className="flex gap-2"><button disabled={!live} onClick={() => void decide(chain.id, "rejected")} className="rounded-xl border border-[var(--line)] px-3 py-2 text-sm font-semibold disabled:opacity-45">Not a transfer</button><button disabled={!live} onClick={() => void decide(chain.id, "confirmed")} className="rounded-xl bg-[var(--forest)] px-3 py-2 text-sm font-semibold text-white disabled:opacity-45">Confirm chain</button></div> : null}</div><div className="mt-6 flex flex-col gap-2">{chain.members.length ? chain.members.map((member, index) => <div key={`${chain.id}-${member.sequence}`} className="flex items-center gap-3"><span className="grid size-8 shrink-0 place-items-center rounded-full bg-[var(--forest-soft)] text-xs font-bold text-[var(--forest)]">{index + 1}</span><div className="min-w-0 flex-1 rounded-xl bg-[var(--paper)] px-4 py-3"><div className="flex flex-wrap justify-between gap-2"><span className="truncate font-medium">{member.transaction?.account?.name ?? "Account movement"} · {member.transaction?.description ?? "Imported transaction"}</span><span className="font-mono text-sm">{formatMoney(member.allocated_amount ?? member.transaction?.amount, member.allocated_currency ?? member.transaction?.currency)}</span></div><p className="mt-1 text-xs text-[var(--muted)]">{member.transaction?.occurred_at ? formatDate(member.transaction.occurred_at) : ""}</p></div></div>) : <p className="rounded-xl bg-[var(--paper)] p-4 text-sm text-[var(--muted)]">{chain.member_count} connected movements. Import live data to inspect each leg.</p>}</div></article>)}{!workspace.transferChains.length ? <EmptyPanel icon={Link2} title="No transfer chains yet" body="Import statements from at least two owned accounts, then rebuild suggestions." /> : null}</section>;
+}
+
+function InvestmentsView({ workspace, mutate }: { workspace: WorkspaceData; mutate: Mutate }) {
+  const live = workspace.mode === "live";
+  const [recordType, setRecordType] = useState<"position" | "snapshot">("position");
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault(); const form = event.currentTarget; const values = new FormData(form); const numeric = (name: string) => Number(values.get(name) || 0);
+    const common = { recordType, accountName: values.get("accountName"), institution: values.get("institution"), baseCurrency: String(values.get("baseCurrency") || "USD").toUpperCase(), cashAvailable: numeric("cashAvailable"), valuationDate: values.get("valuationDate") };
+    const body = recordType === "position" ? { ...common, assetName: values.get("assetName"), symbol: String(values.get("symbol") || "").toUpperCase() || null, assetType: values.get("assetType"), assetCurrency: String(values.get("assetCurrency") || "USD").toUpperCase(), quantity: numeric("quantity"), costBasis: numeric("costBasis"), currentValue: numeric("currentValue"), realizedProfitLoss: 0 } : { ...common, cashValue: numeric("cashValue"), positionsValue: numeric("positionsValue"), totalValue: numeric("totalValue"), contributions: numeric("contributions"), withdrawals: numeric("withdrawals"), dividends: numeric("dividends"), interest: numeric("interest"), fees: numeric("fees"), taxes: numeric("taxes"), realizedProfitLoss: numeric("realizedProfitLoss"), unrealizedProfitLoss: numeric("unrealizedProfitLoss") };
+    try { await mutate("/api/investments", "POST", body); form.reset(); } catch (error) { window.alert(messageOf(error)); }
+  };
+  return <section className="mt-8 grid gap-5 xl:grid-cols-[1fr_380px]"><div className="space-y-4">{workspace.investments.map((position) => <article key={position.id} className="flex flex-wrap items-center justify-between gap-4 rounded-[20px] border border-[var(--line)] bg-[var(--surface)] p-5"><div><p className="text-xs uppercase tracking-[0.1em] text-[var(--muted)]">{position.account?.name ?? "Investment account"} · {position.asset?.asset_type}</p><h2 className="mt-1 text-lg font-semibold">{position.asset?.symbol ? `${position.asset.symbol} · ` : ""}{position.asset?.name ?? "Position"}</h2><p className="mt-1 text-sm text-[var(--muted)]">{Number(position.quantity).toLocaleString()} units · valued {formatDate(position.valuation_date)}</p></div><div className="text-right"><p className="font-mono text-lg font-semibold">{formatMoney(position.current_value, position.currency)}</p><p className={`text-sm ${Number(position.unrealized_profit_loss) >= 0 ? "text-[var(--forest)]" : "text-[var(--danger)]"}`}>{formatMoney(position.unrealized_profit_loss, position.currency)} unrealized</p></div></article>)}{!workspace.investments.length ? <EmptyPanel icon={PiggyBank} title="Investments stay separate" body="Record ARQ or brokerage positions manually. Purchases and sales never become ordinary spending or income." /> : null}</div><form onSubmit={(event) => void submit(event)} className="h-fit rounded-[22px] border border-[var(--line)] bg-[var(--surface)] p-5"><h2 className="font-semibold">Manual investment record</h2><div className="mt-4 grid grid-cols-2 gap-3"><Field label="Record"><select value={recordType} onChange={(event) => setRecordType(event.target.value as "position" | "snapshot")} className="field"><option value="position">Position</option><option value="snapshot">Snapshot</option></select></Field><Field label="Institution"><select name="institution" className="field"><option value="arq">ARQ</option><option value="alpaca">Alpaca</option><option value="other">Other</option></select></Field><Field label="Account"><input required name="accountName" className="field" placeholder="ARQ investments" /></Field><Field label="Currency"><input required name="baseCurrency" className="field" defaultValue="USD" /></Field><Field label="Cash available"><input name="cashAvailable" type="number" step="any" className="field" defaultValue="0" /></Field><Field label="Valuation date"><input required name="valuationDate" type="date" className="field" defaultValue={new Date().toISOString().slice(0, 10)} /></Field>{recordType === "position" ? <><Field label="Asset name"><input required name="assetName" className="field" /></Field><Field label="Symbol"><input name="symbol" className="field" /></Field><Field label="Asset type"><input required name="assetType" className="field" placeholder="ETF, stock, bond" /></Field><Field label="Asset currency"><input required name="assetCurrency" className="field" defaultValue="USD" /></Field><Field label="Quantity"><input required name="quantity" type="number" step="any" className="field" /></Field><Field label="Cost basis"><input name="costBasis" type="number" step="any" className="field" /></Field><Field label="Current value"><input name="currentValue" type="number" step="any" className="field" /></Field></> : <>{["cashValue", "positionsValue", "totalValue", "contributions", "withdrawals", "dividends", "interest", "fees", "taxes", "realizedProfitLoss", "unrealizedProfitLoss"].map((name) => <Field key={name} label={humanize(name)}><input required={name === "totalValue"} name={name} type="number" step="any" className="field" defaultValue="0" /></Field>)}</>}</div><button disabled={!live} className="mt-5 w-full rounded-xl bg-[var(--forest)] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-45">Save {recordType}</button></form></section>;
+}
+
+function SettingsView({ workspace, mutate }: { workspace: WorkspaceData; mutate: Mutate }) {
+  const rollback = async (id: string) => { if (!window.confirm("Remove every transaction created by this import batch? The source file remains in secure history.")) return; try { await mutate(`/api/import/batches/${id}`, "DELETE"); } catch (error) { window.alert(messageOf(error)); } };
+  return <section className="mt-8 grid gap-5 xl:grid-cols-[1fr_340px]"><article className="overflow-hidden rounded-[22px] border border-[var(--line)] bg-[var(--surface)]"><SectionHeading title="Import history" subtitle="Checksums, row counts, and reversible batches" />{workspace.imports.length ? <div className="divide-y divide-[var(--line)]">{workspace.imports.map((batch) => <div key={batch.id} className="flex flex-wrap items-center gap-4 px-5 py-4"><FileUp aria-hidden="true" className="size-4 text-[var(--forest)]" /><div className="min-w-0 flex-1"><p className="truncate font-medium">{batch.file_name}</p><p className="mt-1 text-xs text-[var(--muted)]">{batch.imported_count} imported · {batch.duplicate_count} duplicates · {batch.unresolved_count} questions</p></div><KindBadge kind={batch.status} />{batch.status === "confirmed" ? <button onClick={() => void rollback(batch.id)} aria-label={`Roll back ${batch.file_name}`} className="grid size-9 place-items-center rounded-lg text-[var(--danger)] hover:bg-[#f7e3df]"><Trash2 aria-hidden="true" className="size-4" /></button> : null}</div>)}</div> : <Empty text="Confirmed imports will appear here." />}</article><aside className="space-y-4"><article className="rounded-[20px] border border-[var(--line)] bg-[var(--surface)] p-5"><h2 className="font-semibold">Connection</h2><p className="mt-2 text-sm leading-6 text-[var(--muted)]">{workspace.mode === "live" ? "Signed in. Database, private Storage, and Row Level Security are active." : "Supabase is not connected for this session. Statement preview remains local and read-only."}</p>{workspace.mode !== "live" ? <a href="/login" className="mt-4 inline-block rounded-xl bg-[var(--forest)] px-4 py-2.5 text-sm font-semibold text-white">Open sign in</a> : null}</article><article className="rounded-[20px] border border-[var(--line)] bg-[var(--surface)] p-5"><h2 className="font-semibold">Reporting</h2><p className="mt-2 text-sm leading-6 text-[var(--muted)]">Totals stay separated by currency until explicit exchange-rate data is available. No invented conversion rates are used.</p></article></aside></section>;
+}
+
+function NavItem({ icon: Icon, label, active = false, badge, onSelect }: { icon: typeof LayoutDashboard; label: string; active?: boolean; badge?: string; onSelect: () => void }) { return <button onClick={onSelect} className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left font-medium transition ${active ? "bg-[var(--forest-soft)] text-[var(--forest)]" : "text-[var(--muted)] hover:bg-[var(--paper)] hover:text-[var(--ink)]"}`} aria-current={active ? "page" : undefined}><Icon aria-hidden="true" className="size-[18px]" /><span>{label}</span>{badge && badge !== "0" ? <span className="ml-auto rounded-full bg-[var(--amber-soft)] px-2 py-0.5 text-[11px] font-bold text-[#8a4b21]">{badge}</span> : null}</button>; }
+function Metric({ label, value, note, icon: Icon, tone }: { label: string; value: string; note: string; icon: typeof ArrowDownRight; tone: "green" | "amber" | "plain" }) { const toneClass = tone === "green" ? "bg-[var(--forest-soft)] text-[var(--forest)]" : tone === "amber" ? "bg-[var(--amber-soft)] text-[var(--amber)]" : "bg-[var(--paper-deep)] text-[var(--muted)]"; return <article className="rounded-[20px] border border-[var(--line)] bg-[var(--surface)] p-5 shadow-[0_12px_34px_rgba(37,45,42,0.04)]"><div className="flex items-center justify-between gap-3"><p className="text-sm font-medium text-[var(--muted)]">{label}</p><span className={`grid size-8 place-items-center rounded-xl ${toneClass}`}><Icon aria-hidden="true" className="size-4" /></span></div><p className="mt-4 text-2xl font-semibold tracking-[-0.04em]">{value}</p><p className="mt-1 text-xs text-[var(--muted)]">{note}</p></article>; }
+function SectionHeading({ title, subtitle, action, onAction }: { title: string; subtitle: string; action?: string; onAction?: () => void }) { return <div className="flex items-start justify-between gap-4 border-b border-[var(--line)] px-5 py-5 sm:px-6"><div><h2 className="font-semibold tracking-[-0.02em]">{title}</h2><p className="mt-1 text-sm text-[var(--muted)]">{subtitle}</p></div>{action ? <button onClick={onAction} className="text-sm font-semibold text-[var(--forest)]">{action}</button> : null}</div>; }
+function Empty({ text }: { text: string }) { return <p className="p-6 text-sm text-[var(--muted)]">{text}</p>; }
+function EmptyPanel({ icon: Icon, title, body }: { icon: typeof Check; title: string; body: string }) { return <div className="grid min-h-72 place-items-center rounded-[22px] border border-[var(--line)] bg-[var(--surface)] p-8 text-center"><div className="max-w-md"><span className="mx-auto grid size-12 place-items-center rounded-2xl bg-[var(--forest-soft)] text-[var(--forest)]"><Icon aria-hidden="true" className="size-5" /></span><h2 className="mt-4 font-semibold">{title}</h2><p className="mt-2 text-sm leading-6 text-[var(--muted)]">{body}</p></div></div>; }
+function KindBadge({ kind }: { kind: string }) { const safe = ["income", "confirmed", "posted"].includes(kind) ? "bg-[var(--forest-soft)] text-[var(--forest)]" : ["expense", "rejected", "failed"].includes(kind) ? "bg-[#f7e3df] text-[var(--danger)]" : "bg-[var(--paper-deep)] text-[var(--muted)]"; return <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${safe}`}>{kind.replaceAll("_", " ")}</span>; }
+function Decision({ label, onClick, disabled }: { label: string; onClick: () => void; disabled: boolean }) { return <button disabled={disabled} onClick={onClick} className="rounded-xl border border-[var(--line)] bg-[var(--paper)] px-3 py-2 text-sm font-semibold transition hover:border-[var(--forest)] disabled:opacity-45">{label}</button>; }
+function Field({ label, children }: { label: string; children: React.ReactNode }) { return <label className="text-xs font-semibold text-[var(--muted)]">{label}{children}</label>; }
+function formatDate(value: string) { return new Date(value).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }); }
+function formatMoney(value: string | number | null | undefined, currency: string | null | undefined) { if (value == null || !currency) return "—"; try { return new Intl.NumberFormat(undefined, { style: "currency", currency, maximumFractionDigits: 2 }).format(Number(value)); } catch { return `${currency} ${Number(value).toLocaleString()}`; } }
+function formatTotal(value: number | undefined, currency: string | undefined) { return value == null || !currency ? "—" : formatMoney(value, currency); }
+function coverageLabel(account: WorkspaceData["accounts"][number]) { if (!account.coverage_start || !account.coverage_end) return "Coverage not established"; if (account.coverage_gaps.length) return `${account.coverage_gaps.length} potential gap${account.coverage_gaps.length === 1 ? "" : "s"}`; const end = new Date(`${account.coverage_end}T00:00:00Z`); const days = Math.floor((Date.now() - end.getTime()) / 86_400_000); if (days > 45) return `Update recommended · ${days} days old`; return account.overlapping_periods ? `Complete · ${account.overlapping_periods} safe overlap${account.overlapping_periods === 1 ? "" : "s"}` : "No gaps detected"; }
+function humanize(value: string) { return value.replace(/([A-Z])/g, " $1").replace(/^./, (letter) => letter.toUpperCase()); }
+function messageOf(error: unknown) { return error instanceof Error ? error.message : "The change could not be saved."; }

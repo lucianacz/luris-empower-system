@@ -83,6 +83,10 @@ export async function previewFile(file: PreviewFile, options: { provider?: Provi
   const dates = transactions.map((transaction) => transaction.occurredAt).sort();
   const unresolvedRows = transactions.filter((transaction) => transaction.kind === "unknown").length;
   const warningRows = transactions.filter((transaction) => transaction.warnings.length > 0).length;
+  const inferredPeriod = inferStatementPeriod(file.name, chosen.detection.provider);
+  const currencies = [...new Set(transactions.map((transaction) => transaction.currency))].sort();
+  if (!currencies.length && ["arq", "brubank"].includes(chosen.detection.provider)) currencies.push("ARS");
+  if (!currencies.length && ["deel", "payoneer", "alpaca"].includes(chosen.detection.provider)) currencies.push("USD");
 
   return {
     fileName: file.name,
@@ -99,12 +103,32 @@ export async function previewFile(file: PreviewFile, options: { provider?: Provi
       warningRows,
       unresolvedRows,
       failedRows: transactions.filter((transaction) => transaction.status === "failed").length,
-      currencies: [...new Set(transactions.map((transaction) => transaction.currency))].sort(),
-      dateFrom: dates[0] ?? null,
-      dateTo: dates.at(-1) ?? null,
-      accountLabel: `${providerLabel(chosen.detection.provider)} ${[...new Set(transactions.map((transaction) => transaction.currency))].join(" / ") || "account"}`,
+      currencies,
+      dateFrom: inferredPeriod?.start ?? dates[0] ?? null,
+      dateTo: inferredPeriod?.end ?? dates.at(-1) ?? null,
+      accountLabel: `${providerLabel(chosen.detection.provider)} ${currencies.join(" / ") || "account"}`,
     },
   };
+}
+
+function inferStatementPeriod(fileName: string, provider: Provider): { start: string; end: string } | null {
+  if (provider === "arq") {
+    const match = fileName.match(/(20\d{2})-(0[1-9]|1[0-2])/);
+    if (match) return monthPeriod(Number(match[1]), Number(match[2]));
+  }
+  if (provider === "brubank") {
+    const range = fileName.match(/jan\s+to\s+aug\s+(20\d{2})/i);
+    if (range) return { start: `${range[1]}-01-01T00:00:00.000Z`, end: `${range[1]}-08-31T23:59:59.999Z` };
+    const year = fileName.match(/statement\s+(20\d{2})/i);
+    if (year) return { start: `${year[1]}-01-01T00:00:00.000Z`, end: `${year[1]}-12-31T23:59:59.999Z` };
+  }
+  return null;
+}
+
+function monthPeriod(year: number, month: number) {
+  const start = new Date(Date.UTC(year, month - 1, 1));
+  const end = new Date(Date.UTC(year, month, 1) - 1);
+  return { start: start.toISOString(), end: end.toISOString() };
 }
 
 function detectFormat(fileName: string, mimeType: string): SourceFormat {

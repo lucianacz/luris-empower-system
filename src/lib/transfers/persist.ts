@@ -31,7 +31,7 @@ export async function rebuildTransferSuggestions(supabase: SupabaseClient, userI
     .eq("status", "posted")
     .order("occurred_at", { ascending: true });
   if (error) throw error;
-  const transactions = (data as DatabaseTransaction[] | null ?? []).map<TransferCandidate>((row) => ({
+  let transactions = (data as DatabaseTransaction[] | null ?? []).map<TransferCandidate>((row) => ({
     id: row.id,
     accountId: row.account_id,
     sourceId: row.source_transaction_id,
@@ -51,6 +51,14 @@ export async function rebuildTransferSuggestions(supabase: SupabaseClient, userI
     metadata: row.metadata ?? {},
     warnings: [],
   }));
+  const { data: reviewedChains, error: reviewedError } = await supabase.from("transfer_chains").select("id").eq("user_id", userId).in("status", ["confirmed", "rejected"]);
+  if (reviewedError) throw reviewedError;
+  if (reviewedChains?.length) {
+    const { data: reviewedMembers, error: memberError } = await supabase.from("transfer_chain_members").select("transaction_id").eq("user_id", userId).in("transfer_chain_id", reviewedChains.map((chain) => chain.id));
+    if (memberError) throw memberError;
+    const reviewedTransactionIds = new Set((reviewedMembers ?? []).map((member) => member.transaction_id));
+    transactions = transactions.filter((transaction) => !reviewedTransactionIds.has(transaction.id));
+  }
   const chains = buildTransferChains(matchTransfers(transactions));
 
   const { data: existingSuggested, error: existingError } = await supabase.from("transfer_chains").select("id").eq("user_id", userId).eq("status", "suggested");
