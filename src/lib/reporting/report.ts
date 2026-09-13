@@ -213,7 +213,7 @@ function categoryFor(transaction: WorkspaceTransaction) {
     return { id: configured?.name ?? "bank-fees", name: "Bank fees", lifeArea: configured?.lifeArea ?? "Financial", essential: configured?.essential ?? false, extraordinary: false, color: configured?.color ?? "#9c6644" };
   }
   const flight = isFlight(transaction);
-  const suggestedName = !category ? suggestDefaultCategory({ kind: transaction.kind as "expense", description: transaction.description, metadata: scalarMetadata(transaction.metadata) }) : null;
+  const suggestedName = !category ? suggestDefaultCategory({ kind: transaction.kind as "expense", description: transaction.description, metadata: scalarMetadata(transaction.metadata), amount: transaction.amount, currency: transaction.currency }) : null;
   const suggested = suggestedName ? defaultExpenseCategories.find((item) => item.name === suggestedName) : null;
   return {
     id: flight ? "flights" : transaction.category_id ?? suggested?.name ?? "uncategorized",

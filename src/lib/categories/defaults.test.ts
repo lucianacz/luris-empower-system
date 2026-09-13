@@ -2,13 +2,13 @@ import { describe, expect, it } from "vitest";
 import { matchKnownMerchant, resolvedKnownMerchantKind } from "./known-merchants";
 import { suggestDefaultCategory } from "./defaults";
 
-const classify = (description: string, mccLabel: string | null = null, kind = "expense") => suggestDefaultCategory({ kind: kind as "expense", description, metadata: { mccLabel } });
+const classify = (description: string, mccLabel: string | null = null, kind = "expense") => suggestDefaultCategory({ kind: kind as "expense", description, metadata: { mccLabel }, amount: "-10", currency: "USD" });
 
 describe("default expense categories", () => {
   it("uses merchant descriptions and MCC labels", () => {
     expect(classify("Example purchase", "Grocery Stores, Supermarkets")).toBe("Groceries");
     expect(classify("UBER TRIP")).toBe("Transport");
-    expect(classify("AIRBNB RESERVATION")).toBe("Travel");
+    expect(classify("AIRBNB RESERVATION")).toBe("Housing");
     expect(classify("OPENAI subscription")).toBe("Subscriptions & software");
   });
 
@@ -28,6 +28,12 @@ describe("default expense categories", () => {
     expect(classify("ENTERPRISE UVITA")).toBe("Car rental");
     expect(classify("SEPHORA&#x20;CR")).toBe("Personal care");
     expect(classify("BKG*HOTEL AT BOOKING.C")).toBe("Hotels");
+    expect(classify("MINISUPER WILLY WILLYS")).toBe("Groceries");
+    expect(classify("SERVICENTRO EL CONEJO")).toBe("Fuel & gas");
+    expect(classify("ANIBAL MARCOS PAZ")).toBe("Diving & activities");
+    expect(matchKnownMerchant("APPLE.COM/BILL", { amount: "-9.49", currency: "USD" })?.displayName).toBe("YouTube (via Apple)");
+    expect(matchKnownMerchant("APPLE.COM/BILL", { amount: "-0.99", currency: "USD" })?.displayName).toBe("iCloud (via Apple)");
+    expect(matchKnownMerchant("APPLE.COM/BILL", { amount: "-12.99", currency: "USD" })).toBeNull();
   });
 
   it("turns negative known-provider transfers into spending but preserves positive refunds", () => {

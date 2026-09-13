@@ -1,6 +1,6 @@
 import Decimal from "decimal.js";
 import { ensureDefaultCategories, suggestDefaultCategory } from "@/lib/categories/defaults";
-import { matchKnownMerchant, normalizeUserCountryHint, resolvedKnownMerchantKind } from "@/lib/categories/known-merchants";
+import { matchKnownMerchant, normalizeUserCountryHint, resolvedKnownMerchantKind, resolvedKnownMerchantName } from "@/lib/categories/known-merchants";
 import { partitionDuplicates } from "@/lib/import/duplicates";
 import { previewFile } from "@/lib/import/engine";
 import { stableFingerprint } from "@/lib/import/normalize";
@@ -145,15 +145,18 @@ export async function POST(request: Request) {
       if (rulesError) throw rulesError;
       const savedCategoryIds = new Map((savedRules ?? []).map((rule) => [normalizeMatchText(rule.match_text), rule.category_id]));
       const transactionRows = accepted.map((transaction) => {
-        const known = matchKnownMerchant(transaction.description);
+        const known = matchKnownMerchant(transaction.description, transaction);
         const kind = resolvedKnownMerchantKind(known, transaction.amount, transaction.kind);
         const categoryName = suggestDefaultCategory({ ...transaction, kind });
-        const merchantName = known?.displayName ?? transaction.description;
+        const merchantName = resolvedKnownMerchantName(known, transaction.description);
+        const categoryId = known
+          ? categoryIds.get(known.categoryName ?? "") ?? null
+          : savedCategoryIds.get(normalizeMatchText(transaction.description)) ?? categoryIds.get(categoryName ?? "") ?? null;
         return {
           user_id: user.id,
           account_id: account.id,
           import_batch_id: batchId,
-          category_id: savedCategoryIds.get(normalizeMatchText(transaction.description)) ?? categoryIds.get(categoryName ?? "") ?? null,
+          category_id: categoryId,
           source_transaction_id: transaction.sourceId,
           fingerprint: transaction.fingerprint,
           occurred_at: transaction.occurredAt,
@@ -172,6 +175,7 @@ export async function POST(request: Request) {
           status: transaction.status,
           kind,
           excluded_from_totals: known?.excludedFromTotals ?? transaction.excludedFromTotals,
+          beneficiary_scope: known?.beneficiaryScope ?? "personal",
           metadata: transaction.metadata,
         };
       });

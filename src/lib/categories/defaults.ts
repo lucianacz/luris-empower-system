@@ -15,7 +15,7 @@ export interface DefaultExpenseCategory {
 export const defaultExpenseCategories: DefaultExpenseCategory[] = [
   { name: "Bank fees", lifeArea: "Financial", essential: true, color: "#9a5528", pattern: /\bfee\b|commission|comisi[oó]n|cargo por servicio|maintenance fee/i },
   { name: "Taxes", lifeArea: "Financial", essential: true, color: "#784f66", pattern: /\btax(?:es)?\b|impuesto|afip|agip/i },
-  { name: "Groceries", lifeArea: "Food", essential: true, color: "#52796f", pattern: /grocery|groceries|supermarket|supermercado|market|mercado|verduler|carnicer|bakery|panader|almac[eé]n|convenience|7-eleven|seven-eleven|city\s*mall|lawson|whole foods|walmart/i },
+  { name: "Groceries", lifeArea: "Food", essential: true, color: "#52796f", pattern: /grocery|groceries|supermarket|supermercado|\bmini\s*super\b|\bminisuper\b|\bmega\s*super\b|\bsuper\b|market|mercado|verduler|carnicer|bakery|panader|almac[eé]n|convenience|7-eleven|seven-eleven|city\s*mall|golden\s*mall|daily\s*mart|bm\s+rio\s+claro|lawson|whole foods|walmart/i },
   { name: "Dining out", lifeArea: "Food", essential: false, color: "#d37a3d", pattern: /restaurant|dining|fast food|caf[eé]|coffee|bar\b|sushi|rappi|uber eats|delivery|mcdonald|starbucks|helader/i },
   { name: "Housing", lifeArea: "Home", essential: true, color: "#7a6c5d", pattern: /\brent\b|alquiler|expensas|condominio|property management/i },
   { name: "Bills & utilities", lifeArea: "Home", essential: true, color: "#557a95", pattern: /electric|electricidad|internet|telecom|telephone|tel[eé]fono|mobile|water bill|agua\b|gas bill|utility|utilities/i },
@@ -38,16 +38,20 @@ export const defaultExpenseCategories: DefaultExpenseCategory[] = [
   { name: "English classes", parentName: "Education", lifeArea: "Growth", essential: false, color: "#7b8b65", pattern: /english class|clases? de ingl[eé]s/i },
   { name: "Cleaning", parentName: "Housing", lifeArea: "Home", essential: true, color: "#8a806f", pattern: /cleaning|limpieza/i },
   { name: "Car repairs", parentName: "Transport", lifeArea: "Mobility", essential: true, color: "#6a7f4f", pattern: /car repair|reparaci[oó]n.*(?:auto|carro)|mec[aá]nic|neum[aá]tic|la casa del hyundai|centro llantero del sur/i },
+  { name: "Fuel & gas", parentName: "Transport", lifeArea: "Mobility", essential: true, color: "#b56b36", pattern: /fuel|gasolin|combustible|servicentro|gas station|lumicentro/i },
+  { name: "Dermatology", parentName: "Health", lifeArea: "Health", essential: true, color: "#357d8a", pattern: /dermatolog|skin medical/i },
+  { name: "Diving & activities", parentName: "Entertainment", lifeArea: "Leisure", essential: false, color: "#167b91", pattern: /diving|buceo|scuba|surfboard|water activit/i },
+  { name: "Workshops & classes", parentName: "Education", lifeArea: "Growth", essential: false, color: "#9a6b52", pattern: /workshop|taller|class|clase/i },
   { name: "Pets", lifeArea: "Home", essential: true, color: "#907761", pattern: /veterinar|pet shop|pet store|mascota/i },
   { name: "Gifts & giving", lifeArea: "Relationships", essential: false, color: "#a66b6b", pattern: /gift|regalo|donation|donaci[oó]n|charity/i },
 ];
 
-export function suggestDefaultCategory(transaction: Pick<NormalizedTransaction, "kind" | "description" | "metadata">) {
+export function suggestDefaultCategory(transaction: Pick<NormalizedTransaction, "kind" | "description" | "metadata" | "amount" | "currency">) {
   if (!["expense", "refund", "fee", "tax"].includes(transaction.kind)) return null;
   if (transaction.kind === "fee") return "Bank fees";
   if (transaction.kind === "tax") return "Taxes";
-  const known = matchKnownMerchant(transaction.description);
-  if (known?.categoryName) return known.categoryName;
+  const known = matchKnownMerchant(transaction.description, transaction);
+  if (known) return known.categoryName;
   const haystack = [transaction.description, transaction.metadata.mccLabel, transaction.metadata.sourceType].filter(Boolean).join(" ");
   return defaultExpenseCategories.find((category) => category.pattern.test(haystack))?.name ?? null;
 }

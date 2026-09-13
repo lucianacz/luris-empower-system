@@ -18,7 +18,7 @@ const currencyHints: Record<string, { code: string; name: string }> = {
   ARS: { code: "AR", name: "Argentina" }, BRL: { code: "BR", name: "Brazil" }, CRC: { code: "CR", name: "Costa Rica" },
   MXN: { code: "MX", name: "Mexico" }, CLP: { code: "CL", name: "Chile" }, COP: { code: "CO", name: "Colombia" },
   PEN: { code: "PE", name: "Peru" }, UYU: { code: "UY", name: "Uruguay" }, JPY: { code: "JP", name: "Japan" },
-  KRW: { code: "KR", name: "South Korea" }, THB: { code: "TH", name: "Thailand" },
+  KRW: { code: "KR", name: "South Korea" }, THB: { code: "TH", name: "Thailand" }, CAD: { code: "CA", name: "Canada" },
 };
 
 export function inferLocationSuggestions(transactions: WorkspaceTransaction[], confirmed: WorkspaceLocationPeriod[] = [], learnedHints: LearnedCurrencyHint[] = []): LocationSuggestion[] {
@@ -46,14 +46,23 @@ export function inferLocationSuggestions(transactions: WorkspaceTransaction[], c
 interface Signal { transactionId: string; date: string; countryCode: string; countryName: string; source: "merchant_country" | "currency" | "flight_destination"; housing: boolean }
 
 function countrySignal(transaction: WorkspaceTransaction, availableHints: typeof currencyHints) {
+  const originalCurrency = (transaction.original_currency || transaction.currency).toUpperCase();
+  const currencyHint = availableHints[originalCurrency];
+  if (currencyHint) return { ...currencyHint, source: "currency" as const };
+  if (isRemoteOrProcessorMerchant(transaction)) return null;
   const raw = transaction.merchant_country || stringMetadata(transaction.metadata?.merchantCountry);
   if (raw) {
     const normalized = raw.trim().toUpperCase();
     const code = normalized.length === 2 ? normalized : countryCodeFromName(normalized, availableHints);
     return { code, name: displayCountry(code, raw), source: "merchant_country" as const };
   }
-  const hint = availableHints[transaction.original_currency || transaction.currency];
+  const hint = availableHints[transaction.currency.toUpperCase()];
   return hint ? { ...hint, source: "currency" as const } : null;
+}
+
+function isRemoteOrProcessorMerchant(transaction: WorkspaceTransaction) {
+  const value = `${transaction.description} ${transaction.merchant_name ?? ""} ${transaction.category?.name ?? ""}`;
+  return transaction.category?.name === "Subscriptions & software" || /\bairbnb\b|\bapple\.com\/bill\b|\b(?:anthropic|claude|adobe|openai|netflix|spotify|youtube|icloud)\b|\buber\b/i.test(value);
 }
 
 function clusterSignals(items: Signal[], confirmed: WorkspaceLocationPeriod[]) {

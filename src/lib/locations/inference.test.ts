@@ -24,4 +24,19 @@ describe("dynamic location inference", () => {
     const result = inferLocationSuggestions([row("1", "2026-05-01", "ZAR"), row("2", "2026-05-02", "ZAR"), row("3", "2026-05-03", "ZAR"), row("4", "2026-05-05", "ZAR")], [], [{ currency: "ZAR", countryCode: "ZA", countryName: "South Africa" }]);
     expect(result[0]).toMatchObject({ countryCode: "ZA", countryName: "South Africa" });
   });
+
+  it("recognizes repeated CAD activity as Canada", () => {
+    const result = inferLocationSuggestions([row("1", "2026-07-18", "CAD"), row("2", "2026-07-19", "CAD"), row("3", "2026-07-20", "CAD"), row("4", "2026-07-22", "CAD")]);
+    expect(result[0]).toMatchObject({ countryCode: "CA", countryName: "Canada" });
+  });
+
+  it("does not treat subscription processors or Airbnb as physical stays", () => {
+    const rows = [
+      { ...row("1", "2026-02-01", "USD"), description: "APPLE.COM/BILL", merchant_country: "US", category: { name: "Subscriptions & software", life_area: "Digital", is_essential: false, color: "#6c63a8" } },
+      { ...row("2", "2026-02-03", "USD"), description: "AIRBNB * LONDON", merchant_country: "GB" },
+      { ...row("3", "2026-02-05", "USD"), description: "UBER *TRIP", merchant_country: "NL" },
+      { ...row("4", "2026-02-07", "USD"), description: "ANTHROPIC CLAUDE", merchant_country: "US" },
+    ];
+    expect(inferLocationSuggestions(rows)).toEqual([]);
+  });
 });

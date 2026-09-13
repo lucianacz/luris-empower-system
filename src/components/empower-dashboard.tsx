@@ -33,6 +33,7 @@ import { TransactionLedger } from "@/components/transaction-ledger";
 import { demoWorkspace, type WorkspaceData } from "@/lib/workspace/demo";
 
 type View = "spending" | "transactions" | "questions" | "locations" | "recurring" | "cash" | "files" | "imports" | "investments" | "transfers" | "settings";
+const views = new Set<View>(["spending", "transactions", "questions", "locations", "recurring", "cash", "files", "imports", "investments", "transfers", "settings"]);
 
 const viewTitles: Record<View, string> = {
   spending: "How you use your money",
@@ -79,7 +80,32 @@ export function EmpowerDashboard() {
     };
   }, [refresh]);
 
+  useEffect(() => {
+    const syncViewFromUrl = () => {
+      const candidate = new URL(window.location.href).searchParams.get("view");
+      setCurrentView(candidate && views.has(candidate as View) ? candidate as View : "spending");
+      setMenuOpen(false);
+    };
+    const initialUrl = new URL(window.location.href);
+    const initialView = initialUrl.searchParams.get("view");
+    if (initialView && views.has(initialView as View) && initialView !== "spending" && window.history.state?.empowerView !== initialView) {
+      const selectedUrl = `${initialUrl.pathname}${initialUrl.search}${initialUrl.hash}`;
+      initialUrl.searchParams.delete("view");
+      window.history.replaceState({ ...window.history.state, empowerView: "spending" }, "", `${initialUrl.pathname}${initialUrl.search}${initialUrl.hash}`);
+      window.history.pushState({ ...window.history.state, empowerView: initialView }, "", selectedUrl);
+    }
+    syncViewFromUrl();
+    window.addEventListener("popstate", syncViewFromUrl);
+    return () => window.removeEventListener("popstate", syncViewFromUrl);
+  }, []);
+
   const navigate = (view: View) => {
+    if (view !== currentView) {
+      const url = new URL(window.location.href);
+      if (view === "spending") url.searchParams.delete("view");
+      else url.searchParams.set("view", view);
+      window.history.pushState({ ...window.history.state, empowerView: view }, "", `${url.pathname}${url.search}${url.hash}`);
+    }
     setCurrentView(view);
     setMenuOpen(false);
   };

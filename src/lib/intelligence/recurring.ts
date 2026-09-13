@@ -50,13 +50,15 @@ export function analyzeRecurring(transactions: WorkspaceTransaction[], today: st
   const questions: IntelligenceQuestion[] = [];
   const insights: SpendingInsight[] = [];
   for (const [key, rows] of groups) {
-    if (rows.length < 2) continue;
     const sorted = [...rows].sort((left, right) => left.occurred_at.localeCompare(right.occurred_at));
+    const latest = sorted.at(-1)!;
+    const known = matchKnownMerchant(latest.description, latest) ?? matchKnownMerchant(latest.merchant_name || "", latest);
+    if (known?.recurrenceDenied) continue;
+    if (rows.length < 2) continue;
     const dates = sorted.map((row) => row.occurred_at.slice(0, 10));
     const gaps = dates.slice(1).map((date, index) => daysBetween(dates[index], date));
     const medianGap = median(gaps);
     const categoryName = mostCommon(sorted.map((row) => row.category?.name).filter((value): value is string => Boolean(value))) ?? null;
-    const known = matchKnownMerchant(sorted.at(-1)!.merchant_name || sorted.at(-1)!.description);
     const distinctMonths = new Set(dates.map((date) => date.slice(0, 7))).size;
     const explicitlyMonthly = /hospital\s*alem[aá]n|hospitalaleman/i.test(`${key} ${sorted.at(-1)!.description}`);
     const thisMonthRows = sorted.filter((row) => row.occurred_at.startsWith(today.slice(0, 7)));
@@ -65,7 +67,7 @@ export function analyzeRecurring(transactions: WorkspaceTransaction[], today: st
     if (isEverydayVariableCategory(categoryName ?? known?.categoryName) && !known?.recurrenceHint) continue;
     const annual = rows.length >= 2 && medianGap >= 320 && medianGap <= 410;
     const weekly = rows.length >= 6 && distinctMonths >= 3 && medianGap >= 5 && medianGap <= 10;
-    const monthly = explicitlyMonthly || (known?.recurrenceHint === "monthly" && distinctMonths >= 2) || (distinctMonths >= 3 && looksMonthly(dates, gaps));
+    const monthly = explicitlyMonthly || known?.recurrenceHint === "monthly" || (distinctMonths >= 3 && looksMonthly(dates, gaps));
     const frequency = annual ? "annual" : weekly || (known?.recurrenceHint === "weekly" && rows.length >= 6 && distinctMonths >= 3) ? "weekly" : monthly ? "monthly" : "uncertain";
     if (frequency === "uncertain") continue;
     const amounts = sorted.map((row) => Math.abs(Number(row.amount)));
@@ -73,7 +75,7 @@ export function analyzeRecurring(transactions: WorkspaceTransaction[], today: st
     const lastPayment = dates.at(-1)!;
     const expectedDays = frequency === "weekly" ? 7 : frequency === "monthly" ? 30 : frequency === "annual" ? 365 : null;
     const staleDays = daysBetween(lastPayment, today);
-    const status = expectedDays == null ? "uncertain" : staleDays <= expectedDays * 1.8 ? "active" : staleDays > expectedDays * 3 ? "inactive" : "uncertain";
+    const status = known?.recurringStatus ?? (expectedDays == null ? "uncertain" : staleDays <= expectedDays * 1.8 ? "active" : staleDays > expectedDays * 3 ? "inactive" : "uncertain");
     const expectedNextPayment = expectedDays == null ? null : addDays(lastPayment, expectedDays);
     const doubled = sorted.filter((row) => Math.abs(Number(row.amount)) >= medianAmount * 1.75 && medianAmount > 0).map((row) => row.id);
     const missingMonths = frequency === "monthly" ? findMissingMonths(dates) : [];
@@ -81,7 +83,7 @@ export function analyzeRecurring(transactions: WorkspaceTransaction[], today: st
     const previousAmount = amounts.at(-2) ?? amounts.at(-1)!;
     const latestIncrease = previousAmount > 0 ? amounts.at(-1)! / previousAmount - 1 : 0;
     const latestGap = gaps.at(-1) ?? expectedDays;
-    const isSubscription = categoryName === "Subscriptions & software" || !categoryName && ["monthly", "annual"].includes(frequency) && coefficientOfVariation(amounts) < 0.05;
+    const isSubscription = known?.subscription === true || categoryName === "Subscriptions & software" || !categoryName && ["monthly", "annual"].includes(frequency) && coefficientOfVariation(amounts) < 0.05;
     const pattern: RecurringPattern = { key, providerName: sorted.at(-1)!.merchant_name || sorted.at(-1)!.description, frequency, status, currency: sorted.at(-1)!.currency, medianAmount, latestAmount: amounts.at(-1)!, lastPayment, expectedNextPayment, transactionIds: sorted.map((row) => row.id), missingMonths, doubledTransactionIds: doubled, categoryName, isSubscription };
     patterns.push(pattern);
 

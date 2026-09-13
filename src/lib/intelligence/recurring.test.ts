@@ -39,4 +39,9 @@ describe("recurring expense intelligence", () => {
     expect(result.patterns).toHaveLength(0);
     expect(result.questions.some((question) => question.type === "possible_multi_period_payment")).toBe(false);
   });
+
+  it("separates amount-based Apple subscriptions", () => {
+    const youtube = ["2026-01-07", "2026-02-07", "2026-03-07"].map((date, index) => ({ ...payment(`youtube-${index}`, date, "-9.49"), description: "APPLE.COM/BILL", merchant_name: "YouTube (via Apple)", merchant_key: "youtube via apple", currency: "USD", category_id: "subscriptions", category: { name: "Subscriptions & software", life_area: "Digital", is_essential: false, color: "#6c63a8" } }));
+    expect(analyzeRecurring(youtube, "2026-03-13").patterns[0]).toMatchObject({ providerName: "YouTube (via Apple)", frequency: "monthly", status: "active", isSubscription: true });
+  });
 });

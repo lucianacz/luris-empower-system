@@ -33,6 +33,16 @@ export async function POST(request: Request) {
     const { error: hintError } = await supabase.from("location_currency_hints").upsert({ user_id: user.id, currency: input.data.defaultCurrency, location_id: location.id, weight: 0.2 }, { onConflict: "user_id,currency,location_id" });
     if (hintError) return Response.json({ error: hintError.message }, { status: 422 });
   }
+  let existingQuery = supabase.from("location_periods").select("id").eq("user_id", user.id).eq("location_id", location.id).eq("starts_on", input.data.startsOn);
+  existingQuery = input.data.endsOn ? existingQuery.eq("ends_on", input.data.endsOn) : existingQuery.is("ends_on", null);
+  const { data: existingPeriod, error: existingPeriodError } = await existingQuery.limit(1).maybeSingle();
+  if (existingPeriodError) return Response.json({ error: existingPeriodError.message }, { status: 422 });
+  if (existingPeriod) {
+    const { error: updateError } = await supabase.from("location_periods").update({ status: input.data.status, period_type: input.data.periodType, trip_purpose: input.data.tripPurpose ?? null, confidence: input.data.confidence, explanation: input.data.explanation, evidence: { ...input.data.evidence, transactionIds: input.data.transactionIds } }).eq("id", existingPeriod.id).eq("user_id", user.id);
+    if (updateError) return Response.json({ error: updateError.message }, { status: 422 });
+    if (input.data.status === "confirmed") await assignPeriodTransactions(supabase, user.id, existingPeriod.id, input.data.startsOn, input.data.endsOn ?? input.data.startsOn, input.data.transactionIds);
+    return Response.json({ message: input.data.status === "rejected" ? "Location suggestion rejected." : "Existing location period updated without creating a duplicate.", periodId: existingPeriod.id });
+  }
   const { data: period, error: periodError } = await supabase.from("location_periods").insert({ user_id: user.id, location_id: location.id, starts_on: input.data.startsOn, ends_on: input.data.endsOn ?? null, status: input.data.status, period_type: input.data.periodType, trip_purpose: input.data.tripPurpose ?? null, confidence: input.data.confidence, explanation: input.data.explanation, evidence: { ...input.data.evidence, transactionIds: input.data.transactionIds } }).select("id").single();
   if (periodError) return Response.json({ error: periodError.message }, { status: 422 });
   if (input.data.status === "confirmed") await assignPeriodTransactions(supabase, user.id, period.id, input.data.startsOn, input.data.endsOn ?? input.data.startsOn, input.data.transactionIds);

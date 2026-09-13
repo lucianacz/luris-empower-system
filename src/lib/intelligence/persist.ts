@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ensureDefaultCategories } from "@/lib/categories/defaults";
-import { knownMerchantRules, normalizeUserCountryHint, resolvedKnownMerchantKind } from "@/lib/categories/known-merchants";
+import { knownMerchantRules, matchKnownMerchant, normalizeUserCountryHint, resolvedKnownMerchantKind, resolvedKnownMerchantName } from "@/lib/categories/known-merchants";
 import { cleanDescription } from "@/lib/import/normalize";
 import type { TransactionKind } from "@/lib/import/types";
 import { canonicalMerchant } from "@/lib/reporting/report";
@@ -15,7 +15,7 @@ export async function rebuildSpendingIntelligence(supabase: SupabaseClient, user
   await applyKnownMerchantRules(supabase, userId, transactions, categoryIds);
   await applySpecificCategoryRefinements(supabase, userId, transactions, categoryIds);
   await applyHospitalAlemanRule(supabase, userId, transactions, categoryIds.get("Health insurance") ?? null);
-  const analysis = analyzeRecurring(transactions, new Date().toISOString().slice(0, 10));
+  const analysis = analyzeRecurring(uniqueByFingerprint(transactions), new Date().toISOString().slice(0, 10));
   let obligationCount = 0;
 
   for (const pattern of analysis.patterns) {
@@ -29,6 +29,13 @@ export async function rebuildSpendingIntelligence(supabase: SupabaseClient, user
     const { data: obligation, error: obligationError } = await supabase.from("recurring_obligations").upsert({ user_id: userId, merchant_profile_id: merchant.id, provider_name: providerName, merchant_key: pattern.key, category_id: categoryId, country_code: countryCode, frequency: hospitalAleman ? "monthly" : pattern.frequency, status: hospitalAleman ? "active" : pattern.status, expected_amount: pattern.medianAmount || null, currency: pattern.currency, next_expected_on: pattern.expectedNextPayment }, { onConflict: "user_id,merchant_key" }).select("id").single();
     if (obligationError) throw obligationError;
     obligationCount += 1;
+    const { data: existingLinks, error: existingLinksError } = await supabase.from("recurring_obligation_transactions").select("transaction_id").eq("recurring_obligation_id", obligation.id).eq("user_id", userId);
+    if (existingLinksError) throw existingLinksError;
+    const staleLinkIds = (existingLinks ?? []).map((link) => link.transaction_id).filter((transactionId) => !pattern.transactionIds.includes(transactionId));
+    for (let index = 0; index < staleLinkIds.length; index += 500) {
+      const { error } = await supabase.from("recurring_obligation_transactions").delete().eq("recurring_obligation_id", obligation.id).eq("user_id", userId).in("transaction_id", staleLinkIds.slice(index, index + 500));
+      if (error) throw error;
+    }
     const links = pattern.transactionIds.map((transactionId) => ({ user_id: userId, recurring_obligation_id: obligation.id, transaction_id: transactionId }));
     for (let index = 0; index < links.length; index += 500) {
       const { error } = await supabase.from("recurring_obligation_transactions").upsert(links.slice(index, index + 500), { onConflict: "recurring_obligation_id,transaction_id" });
@@ -84,7 +91,7 @@ async function applyCountryOverrides(supabase: SupabaseClient, userId: string, t
 
 async function applyKnownMerchantRules(supabase: SupabaseClient, userId: string, transactions: WorkspaceTransaction[], categoryIds: Map<string, string>) {
   for (const rule of knownMerchantRules) {
-    const related = transactions.filter((transaction) => rule.pattern.test(cleanDescription(transaction.description)));
+    const related = transactions.filter((transaction) => matchKnownMerchant(transaction.description, transaction)?.id === rule.id);
     if (!related.length) continue;
     const categoryId = rule.categoryName ? categoryIds.get(rule.categoryName) ?? null : null;
     let personId: string | null = null;
@@ -93,18 +100,38 @@ async function applyKnownMerchantRules(supabase: SupabaseClient, userId: string,
       if (error) throw error;
       personId = person.id;
     }
-    const merchantKey = canonicalMerchant(rule.displayName);
-    const update = {
-      category_id: categoryId,
-      merchant_name: rule.displayName,
-      merchant_key: merchantKey,
-      ...(rule.countryCode ? { merchant_country: rule.countryCode } : {}),
-      ...(rule.kind ? { kind: rule.kind } : {}),
-      ...(rule.excludedFromTotals !== undefined ? { excluded_from_totals: rule.excludedFromTotals } : {}),
-    };
-    for (let index = 0; index < related.length; index += 500) {
-      const { error } = await supabase.from("transactions").update(update).eq("user_id", userId).in("id", related.slice(index, index + 500).map((transaction) => transaction.id));
-      if (error) throw error;
+    const byMerchant = new Map<string, WorkspaceTransaction[]>();
+    for (const transaction of related) {
+      const merchantName = resolvedKnownMerchantName(rule, transaction.description);
+      byMerchant.set(merchantName, [...(byMerchant.get(merchantName) ?? []), transaction]);
+    }
+    for (const [merchantName, merchantTransactions] of byMerchant) {
+      const merchantKey = canonicalMerchant(merchantName);
+      const update = {
+        category_id: categoryId,
+        merchant_name: merchantName,
+        merchant_key: merchantKey,
+        ...(rule.countryCode ? { merchant_country: rule.countryCode } : {}),
+        ...(rule.kind ? { kind: rule.kind } : {}),
+        ...(rule.excludedFromTotals !== undefined ? { excluded_from_totals: rule.excludedFromTotals } : {}),
+        ...(rule.beneficiaryScope ? { beneficiary_scope: rule.beneficiaryScope } : {}),
+      };
+      for (let index = 0; index < merchantTransactions.length; index += 500) {
+        const { error } = await supabase.from("transactions").update(update).eq("user_id", userId).in("id", merchantTransactions.slice(index, index + 500).map((transaction) => transaction.id));
+        if (error) throw error;
+      }
+      const { error: merchantError } = await supabase.from("merchant_profiles").upsert({ user_id: userId, merchant_key: merchantKey, display_name: merchantName, category_id: categoryId, person_id: personId, country_code: rule.countryCode ?? merchantTransactions.find((transaction) => transaction.merchant_country)?.merchant_country ?? null, notes: rule.personRole ?? null }, { onConflict: "user_id,merchant_key" });
+      if (merchantError) throw merchantError;
+      for (const transaction of merchantTransactions) {
+        transaction.category_id = categoryId;
+        transaction.category = rule.categoryName ? categoryFor(rule.categoryName) : null;
+        transaction.merchant_name = merchantName;
+        transaction.merchant_key = merchantKey;
+        if (rule.countryCode) transaction.merchant_country = rule.countryCode;
+        if (rule.beneficiaryScope) transaction.beneficiary_scope = rule.beneficiaryScope;
+        transaction.kind = resolvedKnownMerchantKind(rule, transaction.amount, transaction.kind as TransactionKind);
+        if (rule.excludedFromTotals !== undefined) transaction.excluded_from_totals = rule.excludedFromTotals;
+      }
     }
     if (!rule.kind && rule.categoryName) {
       const expenseIds = related.filter((transaction) => Number(transaction.amount) < 0).map((transaction) => transaction.id);
@@ -113,22 +140,11 @@ async function applyKnownMerchantRules(supabase: SupabaseClient, userId: string,
         if (error) throw error;
       }
     }
-    const { error: merchantError } = await supabase.from("merchant_profiles").upsert({ user_id: userId, merchant_key: merchantKey, display_name: rule.displayName, category_id: categoryId, person_id: personId, country_code: rule.countryCode ?? related.find((transaction) => transaction.merchant_country)?.merchant_country ?? null, notes: rule.personRole ?? null }, { onConflict: "user_id,merchant_key" });
-    if (merchantError) throw merchantError;
-    if (categoryId) {
+    if (categoryId && rule.amount === undefined) {
       for (const description of [...new Set(related.map((transaction) => cleanDescription(transaction.description)))]) {
         const { error } = await supabase.from("categorization_rules").upsert({ user_id: userId, category_id: categoryId, name: `${rule.displayName} · ${rule.categoryName}`, match_text: description.toLocaleLowerCase(), conditions: { descriptionEquals: description, knownMerchantRule: rule.id }, enabled: true }, { onConflict: "user_id,match_text" });
         if (error) throw error;
       }
-    }
-    for (const transaction of related) {
-      transaction.category_id = categoryId;
-      transaction.category = rule.categoryName ? categoryFor(rule.categoryName) : null;
-      transaction.merchant_name = rule.displayName;
-      transaction.merchant_key = merchantKey;
-      if (rule.countryCode) transaction.merchant_country = rule.countryCode;
-      transaction.kind = resolvedKnownMerchantKind(rule, transaction.amount, transaction.kind as TransactionKind);
-      if (rule.excludedFromTotals !== undefined) transaction.excluded_from_totals = rule.excludedFromTotals;
     }
   }
 }
@@ -150,6 +166,13 @@ async function applySpecificCategoryRefinements(supabase: SupabaseClient, userId
       transaction.category = categoryFor(refinement.categoryName);
     }
   }
+  const airbnb = transactions.filter((transaction) => /\bairbnb\b/i.test(cleanDescription(transaction.description)));
+  if (airbnb.length) {
+    const ids = airbnb.map((transaction) => transaction.id);
+    const { error } = await supabase.from("transactions").update({ merchant_country: null }).eq("user_id", userId).in("id", ids);
+    if (error) throw error;
+    for (const transaction of airbnb) transaction.merchant_country = null;
+  }
 }
 
 function categoryFor(name: string): WorkspaceTransaction["category"] {
@@ -163,15 +186,19 @@ const defaultCategoryDetails: Record<string, Omit<NonNullable<WorkspaceTransacti
   "Car repairs": { life_area: "Mobility", is_essential: true, is_extraordinary: false, color: "#6a7f4f" },
   Cleaning: { life_area: "Home", is_essential: true, is_extraordinary: false, color: "#8a806f" },
   Dentist: { life_area: "Health", is_essential: true, is_extraordinary: false, color: "#4f8c80" },
+  Dermatology: { life_area: "Health", is_essential: true, is_extraordinary: false, color: "#357d8a" },
   "Dining out": { life_area: "Food", is_essential: false, is_extraordinary: false, color: "#d37a3d" },
+  "Diving & activities": { life_area: "Leisure", is_essential: false, is_extraordinary: false, color: "#167b91" },
   "English classes": { life_area: "Growth", is_essential: false, is_extraordinary: false, color: "#7b8b65" },
   Groceries: { life_area: "Food", is_essential: true, is_extraordinary: false, color: "#52796f" },
+  "Fuel & gas": { life_area: "Mobility", is_essential: true, is_extraordinary: false, color: "#b56b36" },
   Hotels: { life_area: "Travel", is_essential: false, is_extraordinary: true, color: "#7b6fa8" },
   Housing: { life_area: "Home", is_essential: true, is_extraordinary: false, color: "#7a6c5d" },
   "Personal care": { life_area: "Lifestyle", is_essential: false, is_extraordinary: false, color: "#b07d8b" },
   Pharmacy: { life_area: "Health", is_essential: true, is_extraordinary: false, color: "#6f9d84" },
   Therapy: { life_area: "Health", is_essential: true, is_extraordinary: false, color: "#568b82" },
   Transport: { life_area: "Mobility", is_essential: true, is_extraordinary: false, color: "#496f5d" },
+  "Workshops & classes": { life_area: "Growth", is_essential: false, is_extraordinary: false, color: "#9a6b52" },
 };
 
 async function applyHospitalAlemanRule(supabase: SupabaseClient, userId: string, transactions: WorkspaceTransaction[], categoryId: string | null) {
@@ -179,7 +206,7 @@ async function applyHospitalAlemanRule(supabase: SupabaseClient, userId: string,
   const related = transactions.filter((transaction) => /hospital\s*alem[aá]n|hospitalaleman/i.test(transaction.description));
   if (!related.length) return;
   const ids = related.map((transaction) => transaction.id);
-  const { error } = await supabase.from("transactions").update({ category_id: categoryId, merchant_name: "Hospital Alemán", merchant_key: "hospital alemán", merchant_country: "AR" }).eq("user_id", userId).in("id", ids);
+  const { error } = await supabase.from("transactions").update({ category_id: categoryId, merchant_name: "Hospital Alemán", merchant_key: "hospital alemán", merchant_country: "AR", beneficiary_scope: "personal" }).eq("user_id", userId).in("id", ids);
   if (error) throw error;
   const descriptions = [...new Set(related.map((transaction) => transaction.description))];
   for (const description of descriptions) {
@@ -192,6 +219,7 @@ async function applyHospitalAlemanRule(supabase: SupabaseClient, userId: string,
     transaction.merchant_name = "Hospital Alemán";
     transaction.merchant_key = "hospital alemán";
     transaction.merchant_country = "AR";
+    transaction.beneficiary_scope = "personal";
   }
 }
 
@@ -203,7 +231,7 @@ async function loadTransactions(supabase: SupabaseClient, userId: string) {
     transactions.push(...(data ?? []).map((row) => ({ ...row, category: first(row.category), account: null } as unknown as WorkspaceTransaction)));
     if (!data || data.length < 1000) break;
   }
-  return uniqueByFingerprint(transactions);
+  return transactions;
 }
 
 function first<T>(value: T | T[] | null) { return Array.isArray(value) ? value[0] ?? null : value; }
