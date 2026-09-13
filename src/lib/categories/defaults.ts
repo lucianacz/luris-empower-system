@@ -5,6 +5,8 @@ export interface DefaultExpenseCategory {
   name: string;
   lifeArea: string;
   essential: boolean;
+  extraordinary?: boolean;
+  parentName?: string;
   color: string;
   pattern: RegExp;
 }
@@ -17,7 +19,10 @@ export const defaultExpenseCategories: DefaultExpenseCategory[] = [
   { name: "Housing", lifeArea: "Home", essential: true, color: "#7a6c5d", pattern: /\brent\b|alquiler|expensas|condominio|property management/i },
   { name: "Bills & utilities", lifeArea: "Home", essential: true, color: "#557a95", pattern: /electric|electricidad|internet|telecom|telephone|tel[eé]fono|mobile|water bill|agua\b|gas bill|utility|utilities/i },
   { name: "Transport", lifeArea: "Mobility", essential: true, color: "#496f5d", pattern: /taxi|rideshare|\buber\b|\bgrab\b|\bdidi\b|cabify|subway|metro\b|\bmtr\b|train|bus\b|tap to ride|transporte|parking|estacionamiento|fuel|gasolin|combustible|servicentro|terpel|racetrac|toll|peaje|ruta 27/i },
-  { name: "Travel", lifeArea: "Travel", essential: false, color: "#4d7298", pattern: /airline|aeroline|avianca|latam|copa air|vivaaerobus|sansa|hotel|hostel|booking\.com|airbnb|travel|tour|car rental|alquiler de auto|airalo|\besim\b|immigration|\bvisa\b/i },
+  { name: "Flights", parentName: "Travel", lifeArea: "Travel", essential: false, extraordinary: true, color: "#416788", pattern: /airline|aeroline|avianca|latam|lan airline|copa air|vivaaerobus|sansa|air transport/i },
+  { name: "Travel", lifeArea: "Travel", essential: false, extraordinary: true, color: "#4d7298", pattern: /hotel|hostel|booking\.com|airbnb|travel|tour|car rental|alquiler de auto|airalo|\besim\b|immigration|\bvisa\b/i },
+  { name: "Health insurance", parentName: "Health", lifeArea: "Health", essential: true, color: "#326a60", pattern: /hospital\s*alem[aá]n|hospitalaleman|health insurance|seguro (?:m[eé]dico|de salud)|obra social/i },
+  { name: "Therapy", parentName: "Health", lifeArea: "Health", essential: true, color: "#568b82", pattern: /psycholog|psic[oó]log|therapy|terapia/i },
   { name: "Health", lifeArea: "Health", essential: true, color: "#3d7c6f", pattern: /pharmacy|farmacia|farmacity|medical|m[eé]dic|clinic|cl[ií]nic|hospital|dentist|dental|health|salud|therapy|terapia|laborator/i },
   { name: "Subscriptions & software", lifeArea: "Digital", essential: false, color: "#6c63a8", pattern: /subscription|software|hosting|cloud|google storage|apple\.com\/bill|openai|netflix|spotify|youtube|adobe|notion|figma|canva/i },
   { name: "Shopping", lifeArea: "Lifestyle", essential: false, color: "#a26769", pattern: /clothing|apparel|department store|retail|amazon|mercadolibre|shopping|tienda|zara|ikea|electronics/i },
@@ -37,15 +42,27 @@ export function suggestDefaultCategory(transaction: Pick<NormalizedTransaction, 
 }
 
 export async function ensureDefaultCategories(supabase: SupabaseClient, userId: string) {
-  const { data: existing, error } = await supabase.from("categories").select("id,name").eq("user_id", userId).eq("kind", "expense");
+  const { data: existing, error } = await supabase.from("categories").select("id,name,parent_id").eq("user_id", userId).eq("kind", "expense");
   if (error) throw error;
   const existingNames = new Set((existing ?? []).map((category) => category.name));
-  const missing = defaultExpenseCategories.filter((category) => !existingNames.has(category.name));
-  if (missing.length) {
-    const { error: insertError } = await supabase.from("categories").insert(missing.map((category) => ({ user_id: userId, name: category.name, kind: "expense", color: category.color, life_area: category.lifeArea, is_essential: category.essential })));
+  const missingParents = defaultExpenseCategories.filter((category) => !category.parentName && !existingNames.has(category.name));
+  if (missingParents.length) {
+    const { error: insertError } = await supabase.from("categories").insert(missingParents.map(categoryRow));
+    if (insertError) throw insertError;
+  }
+  const { data: parents, error: parentsError } = await supabase.from("categories").select("id,name").eq("user_id", userId).eq("kind", "expense");
+  if (parentsError) throw parentsError;
+  const parentIds = new Map((parents ?? []).map((category) => [category.name, category.id]));
+  const missingChildren = defaultExpenseCategories.filter((category) => category.parentName && !existingNames.has(category.name));
+  if (missingChildren.length) {
+    const { error: insertError } = await supabase.from("categories").insert(missingChildren.map((category) => ({ ...categoryRow(category), parent_id: parentIds.get(category.parentName!) ?? null })));
     if (insertError) throw insertError;
   }
   const { data, error: reloadError } = await supabase.from("categories").select("id,name").eq("user_id", userId).eq("kind", "expense");
   if (reloadError) throw reloadError;
   return new Map((data ?? []).map((category) => [category.name, category.id]));
+
+  function categoryRow(category: DefaultExpenseCategory) {
+    return { user_id: userId, name: category.name, kind: "expense", color: category.color, life_area: category.lifeArea, is_essential: category.essential, is_extraordinary: category.extraordinary ?? false };
+  }
 }

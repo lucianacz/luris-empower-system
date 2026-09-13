@@ -4,6 +4,8 @@ import { demoWorkspace } from "@/lib/workspace/demo";
 import { hasSupabaseEnv } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
 import { buildSpendingSummary } from "@/lib/spending/summary";
+import { analyzeRecurring } from "@/lib/intelligence/recurring";
+import { inferLocationSuggestions } from "@/lib/locations/inference";
 import type { WorkspaceTransaction } from "@/lib/workspace/demo";
 
 export async function GET() {
@@ -12,21 +14,39 @@ export async function GET() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return Response.json({ ...demoWorkspace, mode: "signed-out" as const });
 
-  const [accounts, questions, chains, imports, categories, investments] = await Promise.all([
+  const [accounts, questions, chains, imports, categories, investments, locationPeriods, locationHints, recurringObligations, profile] = await Promise.all([
     supabase.from("financial_accounts").select("id,institution,name,currency,last_imported_at,last_transaction_at,coverage_start,coverage_end").eq("user_id", user.id).order("name"),
-    supabase.from("questions").select("id,prompt,question_type,created_at,transaction_id,context").eq("user_id", user.id).eq("status", "open").order("created_at", { ascending: false }).limit(100),
+    supabase.from("questions").select("id,prompt,question_type,created_at,transaction_id,context,priority,supporting_transaction_ids,group_key").eq("user_id", user.id).eq("status", "open").order("priority", { ascending: false }).order("created_at", { ascending: false }).limit(100),
     supabase.from("transfer_chains").select("id,status,confidence,source_amount,source_currency,fee_amount,notes,transfer_chain_members(sequence,allocated_amount,allocated_currency,transaction:transactions(id,occurred_at,description,amount,currency,kind,status,excluded_from_totals,fee_amount,category_id,account:financial_accounts(name,institution)))").eq("user_id", user.id).order("created_at", { ascending: false }).limit(50),
     supabase.from("import_batches").select("id,account_id,file_name,status,row_count,imported_count,duplicate_count,unresolved_count,coverage_start,coverage_end,confirmed_at,created_at").eq("user_id", user.id).order("created_at", { ascending: false }).limit(250),
-    supabase.from("categories").select("id,name,kind,color,icon,parent_id,life_area,is_essential").eq("user_id", user.id).eq("is_archived", false).order("name"),
+    supabase.from("categories").select("id,name,kind,color,icon,parent_id,life_area,is_essential,is_extraordinary").eq("user_id", user.id).eq("is_archived", false).order("name"),
     supabase.from("investment_positions").select("id,quantity,cost_basis,current_value,realized_profit_loss,unrealized_profit_loss,currency,valuation_date,asset:investment_assets(symbol,name,asset_type),account:investment_accounts(name)").eq("user_id", user.id).order("valuation_date", { ascending: false }),
+    supabase.from("location_periods").select("id,starts_on,ends_on,status,period_type,trip_purpose,confidence,explanation,evidence,location:locations(id,name,country_code,country_name,default_currency)").eq("user_id", user.id).order("starts_on"),
+    supabase.from("location_currency_hints").select("currency,weight,location:locations(country_code,country_name,name)").eq("user_id", user.id),
+    supabase.from("recurring_obligations").select("id,provider_name,merchant_key,frequency,status,country_code,expected_amount,currency,next_expected_on,category:categories(name),recurring_obligation_transactions(transaction_id)").eq("user_id", user.id).order("provider_name"),
+    supabase.from("profiles").select("ars_exchange_rate_method").eq("id", user.id).maybeSingle(),
   ]);
-  const errors = [accounts.error, questions.error, chains.error, imports.error, categories.error, investments.error].filter(Boolean);
+  const errors = [accounts.error, questions.error, chains.error, imports.error, categories.error, investments.error, locationPeriods.error, locationHints.error, recurringObligations.error, profile.error].filter(Boolean);
   if (errors.length) return Response.json({ error: errors[0]?.message ?? "Workspace data could not be loaded." }, { status: 422 });
   const transactions = await loadTransactions(supabase, user.id);
+  const asOfDate = new Date().toISOString().slice(0, 10);
+  const normalizedLocationPeriods = (locationPeriods.data ?? []).map(normalizeLocationPeriod);
+  const intelligence = analyzeRecurring(transactions, asOfDate);
+  const learnedHints = (locationHints.data ?? []).flatMap((hint) => {
+    const location = firstRelation(hint.location);
+    if (!location?.country_code) return [];
+    return [{ currency: hint.currency, countryCode: location.country_code, countryName: location.country_name || location.name, weight: Number(hint.weight) }];
+  });
+  const locationSuggestions = inferLocationSuggestions(transactions, normalizedLocationPeriods, learnedHints);
+  const uncategorized = transactions.filter((transaction) => transaction.status === "posted" && !transaction.excluded_from_totals && transaction.kind === "expense" && !transaction.category_id).length;
+  const missingFx = transactions.filter((transaction) => transaction.status === "posted" && !transaction.excluded_from_totals && transaction.kind === "expense" && transaction.currency !== "USD" && !transaction.reporting_value).length;
+  const uncertainCoverage = intelligence.patterns.reduce((count, pattern) => count + pattern.missingMonths.length + pattern.doubledTransactionIds.length, 0);
+  const issueCount = uncategorized + missingFx + (questions.data?.length ?? 0) + locationSuggestions.length + intelligence.patterns.filter((pattern) => !pattern.categoryName).length + uncertainCoverage;
 
   const totals = calculateTotals(transactions);
   return Response.json({
     mode: "live",
+    asOfDate,
     totals,
     accounts: (accounts.data ?? []).map((account) => {
       const periods = (imports.data ?? []).filter((batch) => batch.account_id === account.id && batch.status === "confirmed" && batch.coverage_start && batch.coverage_end).map((batch) => ({ start: batch.coverage_start as string, end: batch.coverage_end as string }));
@@ -42,18 +62,43 @@ export async function GET() {
     imports: imports.data ?? [],
     categories: categories.data ?? [],
     investments: investments.data ?? [],
+    locationPeriods: [...normalizedLocationPeriods, ...locationSuggestions.map((suggestion) => ({ id: `suggested:${suggestion.key}`, starts_on: suggestion.startsOn, ends_on: suggestion.endsOn, status: "suggested" as const, period_type: "stay" as const, trip_purpose: null, confidence: suggestion.confidence, explanation: suggestion.explanation, evidence: { ...suggestion.evidence, transactionIds: suggestion.transactionIds }, location: { id: `suggested-location:${suggestion.countryCode}`, name: suggestion.countryName, country_code: suggestion.countryCode, country_name: suggestion.countryName, default_currency: null } }))],
+    recurringObligations: (recurringObligations.data ?? []).map((obligation) => ({ ...obligation, category: firstRelation(obligation.category), transaction_ids: (obligation.recurring_obligation_transactions ?? []).map((item) => item.transaction_id), recurring_obligation_transactions: undefined })),
+    suggestedQuestions: intelligence.questions,
+    insights: intelligence.insights,
+    dataQuality: { score: Math.max(0, Math.round(100 - Math.min(100, issueCount / Math.max(transactions.length, 1) * 100))), uncategorized, missingFx, unansweredQuestions: questions.data?.length ?? 0, uncertainLocations: locationSuggestions.length, recurringUnidentified: intelligence.patterns.filter((pattern) => !pattern.categoryName).length, uncertainCoverage },
+    exchangeRatePreference: profile.data?.ars_exchange_rate_method ?? null,
   });
 }
 
 async function loadTransactions(supabase: Awaited<ReturnType<typeof createClient>>, userId: string) {
   const transactions: WorkspaceTransaction[] = [];
   for (let from = 0; ; from += 1000) {
-    const { data, error } = await supabase.from("transactions").select("id,occurred_at,description,amount,currency,kind,status,excluded_from_totals,fee_amount,category_id,category:categories(name,life_area,is_essential,color),account:financial_accounts(name,institution),expense_splits(id,split_kind,label,percentage,amount)").eq("user_id", userId).order("occurred_at", { ascending: false }).range(from, from + 999);
+    const { data, error } = await supabase.from("transactions").select("id,occurred_at,posted_at,description,amount,currency,original_amount,original_currency,kind,status,excluded_from_totals,fee_amount,fee_currency,category_id,metadata,merchant_name,merchant_key,merchant_country,merchant_city,travel_origin,travel_destination,travel_date,beneficiary_scope,reimbursement_status,category:categories(name,life_area,is_essential,is_extraordinary,color),account:financial_accounts(name,institution),reporting_value:transaction_reporting_values(reporting_amount,reporting_currency,rate_to_reporting,source,is_estimated,exchange_rate:exchange_rates(methodology,rate_date)),location_period:location_periods(id,starts_on,ends_on,status,period_type,trip_purpose,confidence,explanation,evidence,location:locations(id,name,country_code,country_name,default_currency)),expense_splits(id,split_kind,label,percentage,amount,beneficiary_person_id),expense_allocations:expense_period_allocations(id,service_month,amount,currency,reporting_amount,reporting_currency,is_estimated)").eq("user_id", userId).order("occurred_at", { ascending: false }).range(from, from + 999);
     if (error) throw error;
-    transactions.push(...((data ?? []) as unknown as WorkspaceTransaction[]));
+    transactions.push(...(data ?? []).map((transaction) => normalizeTransaction(transaction as Record<string, unknown>)));
     if (!data || data.length < 1000) break;
   }
   return transactions;
+}
+
+function normalizeTransaction(value: Record<string, unknown>): WorkspaceTransaction {
+  const reportingValue = firstRelation(value.reporting_value as Record<string, unknown> | Record<string, unknown>[] | null);
+  const locationPeriod = firstRelation(value.location_period as Record<string, unknown> | Record<string, unknown>[] | null);
+  return { ...value, category: firstRelation(value.category), account: firstRelation(value.account), reporting_value: normalizeReportingValue(reportingValue), location_period: locationPeriod ? normalizeLocationPeriod(locationPeriod) : null } as unknown as WorkspaceTransaction;
+}
+
+function normalizeReportingValue(value: Record<string, unknown> | null) {
+  if (!value) return null;
+  return { ...value, exchange_rate: firstRelation(value.exchange_rate) };
+}
+
+function normalizeLocationPeriod(value: Record<string, unknown>) {
+  return { ...value, location: firstRelation(value.location) } as unknown as import("@/lib/workspace/demo").WorkspaceLocationPeriod;
+}
+
+function firstRelation<T>(value: T | T[] | null | undefined): T | null {
+  return Array.isArray(value) ? value[0] ?? null : value ?? null;
 }
 
 function countOverlaps(periods: Array<{ start: string; end: string }>) {

@@ -2,10 +2,12 @@ import { ensureDefaultCategories, suggestDefaultCategory } from "@/lib/categorie
 import { partitionDuplicates } from "@/lib/import/duplicates";
 import { previewFile } from "@/lib/import/engine";
 import { stableFingerprint } from "@/lib/import/normalize";
+import { canonicalMerchant } from "@/lib/reporting/report";
 import { providers, type ColumnMapping, type Provider } from "@/lib/import/types";
 import { hasSupabaseEnv } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
 import { rebuildTransferSuggestions } from "@/lib/transfers/persist";
+import { rebuildSpendingIntelligence } from "@/lib/intelligence/persist";
 
 export const runtime = "nodejs";
 export const maxDuration = 45;
@@ -110,6 +112,10 @@ export async function POST(request: Request) {
         occurred_at: transaction.occurredAt,
         posted_at: transaction.postedAt,
         description: transaction.description,
+        merchant_name: transaction.description,
+        merchant_key: canonicalMerchant(transaction.description),
+        merchant_country: typeof transaction.metadata.merchantCountry === "string" ? transaction.metadata.merchantCountry : null,
+        merchant_city: typeof transaction.metadata.merchantCity === "string" ? transaction.metadata.merchantCity : null,
         amount: transaction.amount,
         currency: transaction.currency,
         original_amount: transaction.originalAmount,
@@ -170,6 +176,13 @@ export async function POST(request: Request) {
       transferWarning = "Transactions imported, but transfer suggestions need to be rebuilt from the Transfer chains view.";
     }
 
+    let intelligenceWarning: string | null = null;
+    try {
+      await rebuildSpendingIntelligence(supabase, user.id);
+    } catch {
+      intelligenceWarning = "Transactions imported, but proactive spending analysis needs to be refreshed from the Questions view.";
+    }
+
     return Response.json({
       batchId: batch.id,
       importedCount: accepted.length,
@@ -177,6 +190,7 @@ export async function POST(request: Request) {
       unresolvedCount: preview.summary.unresolvedRows,
       transferSuggestionCount,
       transferWarning,
+      intelligenceWarning,
       message: `Imported ${accepted.length} new transaction${accepted.length === 1 ? "" : "s"}.`,
     });
   } catch (error) {
