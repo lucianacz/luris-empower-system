@@ -1,0 +1,12 @@
+Dólares digitales Estado de Cuenta
+Fecha de inicio 1 August 2026 Balance de inicio $ 135.30
+Fecha de fin 31 August 2026 Ingresos $ 1,786.50
+Detalle de Transacciones
+Aug 04 Venta USDc por ARS - 38.25 ARS - 60,000 Conversión USDc a ARS
+Aug 07 Compra USDc + 297.75 USDc + 297.75 Deel Inc
+Recarga a Inversiones o
+Aug 23 - 100 USDc - 100 Fund Wealth Account
+Cuenta Remunerada
+Aug 30 Venta USDc - 1,145 USD - 1,145 Cara Goldberg
+Aug 30 Comisión - 3 N/A N/A Venta USDc comisión
+Aug 31 Liquidación Crédito - 165.19 USD - 165.19 Pagos con tarjeta crédito semanal (MX)

@@ -6,6 +6,8 @@ import { createClient } from "@/lib/supabase/server";
 import { buildSpendingSummary } from "@/lib/spending/summary";
 import { analyzeRecurring } from "@/lib/intelligence/recurring";
 import { inferLocationSuggestions } from "@/lib/locations/inference";
+import { markDuplicateFingerprints } from "@/lib/import/runtime-duplicates";
+import { cleanDescription } from "@/lib/import/normalize";
 import type { WorkspaceTransaction } from "@/lib/workspace/demo";
 
 export async function GET() {
@@ -18,7 +20,7 @@ export async function GET() {
     supabase.from("financial_accounts").select("id,institution,name,currency,last_imported_at,last_transaction_at,coverage_start,coverage_end").eq("user_id", user.id).order("name"),
     supabase.from("questions").select("id,prompt,question_type,created_at,transaction_id,context,priority,supporting_transaction_ids,group_key").eq("user_id", user.id).eq("status", "open").order("priority", { ascending: false }).order("created_at", { ascending: false }).limit(100),
     supabase.from("transfer_chains").select("id,status,confidence,source_amount,source_currency,fee_amount,notes,transfer_chain_members(sequence,allocated_amount,allocated_currency,transaction:transactions(id,occurred_at,description,amount,currency,kind,status,excluded_from_totals,fee_amount,category_id,account:financial_accounts(name,institution)))").eq("user_id", user.id).order("created_at", { ascending: false }).limit(50),
-    supabase.from("import_batches").select("id,account_id,file_name,status,row_count,imported_count,duplicate_count,unresolved_count,coverage_start,coverage_end,confirmed_at,created_at").eq("user_id", user.id).order("created_at", { ascending: false }).limit(250),
+    supabase.from("import_batches").select("id,account_id,institution,file_name,status,row_count,imported_count,duplicate_count,unresolved_count,coverage_start,coverage_end,confirmed_at,created_at").eq("user_id", user.id).order("created_at", { ascending: false }).limit(250),
     supabase.from("categories").select("id,name,kind,color,icon,parent_id,life_area,is_essential,is_extraordinary").eq("user_id", user.id).eq("is_archived", false).order("name"),
     supabase.from("investment_positions").select("id,quantity,cost_basis,current_value,realized_profit_loss,unrealized_profit_loss,currency,valuation_date,asset:investment_assets(symbol,name,asset_type),account:investment_accounts(name)").eq("user_id", user.id).order("valuation_date", { ascending: false }),
     supabase.from("location_periods").select("id,starts_on,ends_on,status,period_type,trip_purpose,confidence,explanation,evidence,location:locations(id,name,country_code,country_name,default_currency)").eq("user_id", user.id).order("starts_on"),
@@ -29,6 +31,10 @@ export async function GET() {
   const errors = [accounts.error, questions.error, chains.error, imports.error, categories.error, investments.error, locationPeriods.error, locationHints.error, recurringObligations.error, profile.error].filter(Boolean);
   if (errors.length) return Response.json({ error: errors[0]?.message ?? "Workspace data could not be loaded." }, { status: 422 });
   const transactions = await loadTransactions(supabase, user.id);
+  const duplicateCountByBatch = transactions.reduce((counts, transaction) => {
+    if (transaction.metadata?.isDuplicate === true && transaction.import_batch_id) counts.set(transaction.import_batch_id, (counts.get(transaction.import_batch_id) ?? 0) + 1);
+    return counts;
+  }, new Map<string, number>());
   const asOfDate = new Date().toISOString().slice(0, 10);
   const normalizedLocationPeriods = (locationPeriods.data ?? []).map(normalizeLocationPeriod);
   const intelligence = analyzeRecurring(transactions, asOfDate);
@@ -59,7 +65,7 @@ export async function GET() {
       const members = [...(chain.transfer_chain_members ?? [])].sort((left, right) => left.sequence - right.sequence);
       return { ...chain, members, member_count: members.length, transfer_chain_members: undefined };
     }),
-    imports: imports.data ?? [],
+    imports: (imports.data ?? []).map((batch) => ({ ...batch, duplicate_count: Number(batch.duplicate_count) + (duplicateCountByBatch.get(batch.id) ?? 0) })),
     categories: categories.data ?? [],
     investments: investments.data ?? [],
     locationPeriods: [...normalizedLocationPeriods, ...locationSuggestions.map((suggestion) => ({ id: `suggested:${suggestion.key}`, starts_on: suggestion.startsOn, ends_on: suggestion.endsOn, status: "suggested" as const, period_type: "stay" as const, trip_purpose: null, confidence: suggestion.confidence, explanation: suggestion.explanation, evidence: { ...suggestion.evidence, transactionIds: suggestion.transactionIds }, location: { id: `suggested-location:${suggestion.countryCode}`, name: suggestion.countryName, country_code: suggestion.countryCode, country_name: suggestion.countryName, default_currency: null } }))],
@@ -74,18 +80,20 @@ export async function GET() {
 async function loadTransactions(supabase: Awaited<ReturnType<typeof createClient>>, userId: string) {
   const transactions: WorkspaceTransaction[] = [];
   for (let from = 0; ; from += 1000) {
-    const { data, error } = await supabase.from("transactions").select("id,occurred_at,posted_at,description,amount,currency,original_amount,original_currency,kind,status,excluded_from_totals,fee_amount,fee_currency,category_id,metadata,merchant_name,merchant_key,merchant_country,merchant_city,travel_origin,travel_destination,travel_date,beneficiary_scope,reimbursement_status,category:categories(name,life_area,is_essential,is_extraordinary,color),account:financial_accounts(name,institution),reporting_value:transaction_reporting_values(reporting_amount,reporting_currency,rate_to_reporting,source,is_estimated,exchange_rate:exchange_rates(methodology,rate_date)),location_period:location_periods(id,starts_on,ends_on,status,period_type,trip_purpose,confidence,explanation,evidence,location:locations(id,name,country_code,country_name,default_currency)),expense_splits(id,split_kind,label,percentage,amount,beneficiary_person_id),expense_allocations:expense_period_allocations(id,service_month,amount,currency,reporting_amount,reporting_currency,is_estimated)").eq("user_id", userId).order("occurred_at", { ascending: false }).range(from, from + 999);
+    const { data, error } = await supabase.from("transactions").select("id,fingerprint,import_batch_id,created_at,occurred_at,posted_at,description,amount,currency,original_amount,original_currency,kind,status,excluded_from_totals,fee_amount,fee_currency,category_id,metadata,merchant_name,merchant_key,merchant_country,merchant_city,travel_origin,travel_destination,travel_date,beneficiary_scope,reimbursement_status,category:categories(name,life_area,is_essential,is_extraordinary,color),account:financial_accounts(name,institution),reporting_value:transaction_reporting_values(reporting_amount,reporting_currency,rate_to_reporting,source,is_estimated,exchange_rate:exchange_rates(methodology,rate_date)),location_period:location_periods(id,starts_on,ends_on,status,period_type,trip_purpose,confidence,explanation,evidence,location:locations(id,name,country_code,country_name,default_currency)),expense_splits(id,split_kind,label,percentage,amount,beneficiary_person_id),expense_allocations:expense_period_allocations(id,service_month,amount,currency,reporting_amount,reporting_currency,is_estimated)").eq("user_id", userId).order("occurred_at", { ascending: false }).range(from, from + 999);
     if (error) throw error;
     transactions.push(...(data ?? []).map((transaction) => normalizeTransaction(transaction as Record<string, unknown>)));
     if (!data || data.length < 1000) break;
   }
-  return transactions;
+  return markDuplicateFingerprints(transactions);
 }
 
 function normalizeTransaction(value: Record<string, unknown>): WorkspaceTransaction {
   const reportingValue = firstRelation(value.reporting_value as Record<string, unknown> | Record<string, unknown>[] | null);
   const locationPeriod = firstRelation(value.location_period as Record<string, unknown> | Record<string, unknown>[] | null);
-  return { ...value, category: firstRelation(value.category), account: firstRelation(value.account), reporting_value: normalizeReportingValue(reportingValue), location_period: locationPeriod ? normalizeLocationPeriod(locationPeriod) : null } as unknown as WorkspaceTransaction;
+  const description = cleanDescription(String(value.description ?? ""));
+  const merchantName = value.merchant_name ? cleanDescription(String(value.merchant_name)) : null;
+  return { ...value, description, merchant_name: merchantName, category: firstRelation(value.category), account: firstRelation(value.account), reporting_value: normalizeReportingValue(reportingValue), location_period: locationPeriod ? normalizeLocationPeriod(locationPeriod) : null } as unknown as WorkspaceTransaction;
 }
 
 function normalizeReportingValue(value: Record<string, unknown> | null) {
@@ -112,10 +120,11 @@ function countOverlaps(periods: Array<{ start: string; end: string }>) {
   return overlaps;
 }
 
-function calculateTotals(transactions: Array<{ amount: string | number; currency: string; kind: string; status: string; excluded_from_totals: boolean; fee_amount: string | number }>) {
+function calculateTotals(transactions: Array<{ amount: string | number; currency: string; kind: string; status: string; excluded_from_totals: boolean; fee_amount: string | number; metadata?: Record<string, unknown> }>) {
   const totals = new Map<string, { currency: string; income: Decimal; spending: Decimal; internalMovement: Decimal; fees: Decimal }>();
   for (const transaction of transactions) {
     if (transaction.status !== "posted") continue;
+    if (transaction.metadata?.isDuplicate === true) continue;
     const summary = totals.get(transaction.currency) ?? { currency: transaction.currency, income: new Decimal(0), spending: new Decimal(0), internalMovement: new Decimal(0), fees: new Decimal(0) };
     const amount = new Decimal(transaction.amount);
     const fee = new Decimal(transaction.fee_amount || 0).abs();

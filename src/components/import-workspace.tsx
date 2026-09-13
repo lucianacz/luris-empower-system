@@ -91,6 +91,7 @@ export function ImportWorkspace() {
     form.set("file", file);
     if (provider) form.set("provider", provider);
     if (Object.keys(mapping).length) form.set("mapping", JSON.stringify(mapping));
+    if (queueIndex < fileQueue.length - 1) form.set("deferAnalysis", "true");
     try {
       const response = await fetch("/api/import/commit", { method: "POST", body: form });
       const result = await response.json();
@@ -173,10 +174,10 @@ export function ImportWorkspace() {
 
                 {preview && !preview.requiresMapping && stage !== "complete" ? (
                   <div className="flex flex-wrap items-center justify-between gap-4 border-t border-[var(--line)] pt-5">
-                    <p className="text-sm text-[var(--muted)]">Confirmation saves the original statement, its checksum, and {preview.transactions.length} normalized rows.</p>
-                    <button disabled={stage === "committing" || preview.detection.provider === "alpaca"} onClick={() => void confirmImport()} className="inline-flex h-11 items-center gap-2 rounded-xl bg-[var(--forest)] px-5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-45">
+                    <p className="text-sm text-[var(--muted)]">{preview.detection.provider === "alpaca" ? "Confirmation stores the original investment statement and its checksum without adding consumer spending." : `Confirmation saves the original statement, its checksum, and ${preview.transactions.length} normalized rows.`}</p>
+                    <button disabled={stage === "committing"} onClick={() => void confirmImport()} className="inline-flex h-11 items-center gap-2 rounded-xl bg-[var(--forest)] px-5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-45">
                       {stage === "committing" ? <Loader2 aria-hidden="true" className="size-4 animate-spin" /> : <Check aria-hidden="true" className="size-4" />}
-                      Confirm import
+                      {preview.detection.provider === "alpaca" ? "Store statement" : "Confirm import"}
                     </button>
                   </div>
                 ) : null}

@@ -134,5 +134,27 @@ export function stableFingerprint(parts: Array<string | number | null | undefine
 }
 
 export function cleanDescription(value: string): string {
-  return value.replace(/\s+/g, " ").trim() || "Untitled transaction";
+  return decodeTextEntities(value).replace(/\s+/g, " ").trim() || "Untitled transaction";
+}
+
+export function decodeTextEntities(value: string): string {
+  const named: Record<string, string> = {
+    amp: "&",
+    apos: "'",
+    gt: ">",
+    lt: "<",
+    nbsp: " ",
+    quot: '"',
+  };
+  return value.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (entity, token: string) => {
+    if (token.startsWith("#x") || token.startsWith("#X")) {
+      const codePoint = Number.parseInt(token.slice(2), 16);
+      return Number.isFinite(codePoint) ? String.fromCodePoint(codePoint) : entity;
+    }
+    if (token.startsWith("#")) {
+      const codePoint = Number.parseInt(token.slice(1), 10);
+      return Number.isFinite(codePoint) ? String.fromCodePoint(codePoint) : entity;
+    }
+    return named[token.toLocaleLowerCase()] ?? entity;
+  });
 }

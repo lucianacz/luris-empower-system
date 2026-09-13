@@ -83,6 +83,7 @@ export class DeelCsvAdapter implements ImportAdapter {
       if (!row.accountAmount && !usdAmount.isZero()) amount = sourceType === "REFUND" || sourceType === "DEPOSIT" ? usdAmount.abs() : usdAmount.abs().negated();
       const kind: TransactionKind = sourceType === "POS_TX" ? "expense" : sourceType === "REFUND" ? "refund" : sourceType === "FEE" ? "fee" : sourceType === "WITHDRAWAL" || sourceType === "DEPOSIT" ? "transfer" : "unknown";
       const fee = parseAmount(row.exchangeFeeAccountAmount).abs();
+      const apiMerchant = readApiMerchant(row.apiTransaction);
       const warnings = status === "failed" ? [row.declineReason || "Declined card transaction retained for history."] : kind === "unknown" ? ["Card transaction type needs review."] : [];
 
       return [createTransaction({
@@ -100,7 +101,9 @@ export class DeelCsvAdapter implements ImportAdapter {
         kind,
         metadata: {
           externalRootTxId: row.externalRootTxId || null,
-          merchantCountry: row.merchantCountry || null,
+          merchantCountry: row.merchantCountry || apiMerchant.country,
+          merchantCity: apiMerchant.city,
+          merchantState: apiMerchant.state,
           mcc: row.mcc || null,
           mccLabel: row.mccLabel || row["MCC Label"] || null,
           last4: row.last4 || null,
@@ -110,5 +113,19 @@ export class DeelCsvAdapter implements ImportAdapter {
         warnings,
       })];
     });
+  }
+}
+
+function readApiMerchant(value: string | undefined) {
+  try {
+    const parsed = JSON.parse(value || "null") as { data?: { merchant?: { city?: unknown; state?: unknown; country?: unknown } } } | null;
+    const merchant = parsed?.data?.merchant;
+    return {
+      city: typeof merchant?.city === "string" && merchant.city.trim() ? merchant.city.trim() : null,
+      state: typeof merchant?.state === "string" && merchant.state.trim() ? merchant.state.trim() : null,
+      country: typeof merchant?.country === "string" && merchant.country.trim() ? merchant.country.trim() : null,
+    };
+  } catch {
+    return { city: null, state: null, country: null };
   }
 }

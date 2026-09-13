@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { uniqueByFingerprint } from "@/lib/import/runtime-duplicates";
 import { buildTransferChains } from "./chains";
 import { matchTransfers, type TransferCandidate } from "./matcher";
 
@@ -31,7 +32,7 @@ export async function rebuildTransferSuggestions(supabase: SupabaseClient, userI
     .eq("status", "posted")
     .order("occurred_at", { ascending: true });
   if (error) throw error;
-  let transactions = (data as DatabaseTransaction[] | null ?? []).map<TransferCandidate>((row) => ({
+  let transactions = uniqueByFingerprint(data as DatabaseTransaction[] | null ?? []).map<TransferCandidate>((row) => ({
     id: row.id,
     accountId: row.account_id,
     sourceId: row.source_transaction_id,

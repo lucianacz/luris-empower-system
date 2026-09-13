@@ -106,7 +106,7 @@ export async function previewFile(file: PreviewFile, options: { provider?: Provi
       currencies,
       dateFrom: inferredPeriod?.start ?? dates[0] ?? null,
       dateTo: inferredPeriod?.end ?? dates.at(-1) ?? null,
-      accountLabel: `${providerLabel(chosen.detection.provider)} ${currencies.join(" / ") || "account"}`,
+      accountLabel: accountLabel(chosen.detection, currencies),
     },
   };
 }
@@ -142,6 +142,12 @@ function providerLabel(provider: Provider): string {
   if (provider === "arq") return "ARQ";
   if (provider === "alpaca") return "Alpaca";
   return provider.charAt(0).toUpperCase() + provider.slice(1);
+}
+
+function accountLabel(detection: DetectionResult, currencies: string[]): string {
+  if (detection.provider === "deel" && detection.variant === "card") return "Deel card";
+  if (detection.provider === "deel" && detection.variant === "balance") return "Deel balance";
+  return `${providerLabel(detection.provider)} ${currencies.join(" / ") || "account"}`;
 }
 
 export function getAdapters(): readonly ImportAdapter[] {

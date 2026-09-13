@@ -1,4 +1,5 @@
 import Decimal from "decimal.js";
+import { isRuntimeDuplicate } from "@/lib/import/runtime-duplicates";
 import type { WorkspaceTransaction } from "@/lib/workspace/demo";
 
 export interface SpendingCurrencySummary {
@@ -60,6 +61,7 @@ interface MutableSummary {
 function emptySummary(currency: string): MutableSummary { return { currency, total: new Decimal(0), personal: new Decimal(0), household: new Decimal(0), essential: new Decimal(0), flexible: new Decimal(0), uncategorized: new Decimal(0), uncategorizedCount: 0, months: new Map(), categories: new Map() }; }
 
 function spendingEntries(transaction: WorkspaceTransaction) {
+  if (isRuntimeDuplicate(transaction)) return [];
   const category = transaction.category ?? null;
   const entries: Array<{ amount: Decimal; category: WorkspaceTransaction["category"] }> = [];
   const amount = new Decimal(transaction.amount || 0);

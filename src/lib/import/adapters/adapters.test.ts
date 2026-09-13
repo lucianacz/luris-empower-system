@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { parseCsv } from "../csv";
+import { previewFile } from "../engine";
 import { ArqPdfAdapter } from "./arq-pdf";
 import { BrubankPdfAdapter } from "./brubank-pdf";
 import { DeelCsvAdapter } from "./deel-csv";
@@ -34,6 +35,14 @@ describe("provider adapters", () => {
     expect(transactions[2].status).toBe("failed");
   });
 
+  it("uses stable Deel account labels across files with different currency mixes", async () => {
+    const cardBytes = new TextEncoder().encode(await fixture("deel-card.csv"));
+    const balanceBytes = new TextEncoder().encode(await fixture("deel-balance.csv"));
+
+    await expect(previewFile({ name: "Card Transactions.csv", mimeType: "text/csv", bytes: cardBytes })).resolves.toMatchObject({ summary: { accountLabel: "Deel card" } });
+    await expect(previewFile({ name: "Deel Transactions.csv", mimeType: "text/csv", bytes: balanceBytes })).resolves.toMatchObject({ summary: { accountLabel: "Deel balance" } });
+  });
+
   it("recognizes Payoneer report semantics and keeps cash unresolved", async () => {
     const parsed = parseCsv(await fixture("payoneer.csv"));
     const adapter = new PayoneerCsvAdapter();
@@ -54,6 +63,22 @@ describe("provider adapters", () => {
     expect(transactions[0]).toMatchObject({ kind: "transfer", amount: "120000", excludedFromTotals: true });
     expect(transactions[2]).toMatchObject({ kind: "expense", amount: "-12345.67", excludedFromTotals: false });
     expect(transactions[3]).toMatchObject({ kind: "unknown", excludedFromTotals: true });
+  });
+
+  it("parses ARQ digital-dollar statements without duplicating conversions or card settlements", async () => {
+    const lines = (await fixture("arq-usd-pdf-lines.txt")).split("\n").filter(Boolean);
+    const adapter = new ArqPdfAdapter();
+    const input = { fileName: "Estado de cuenta ARQ - 2026-08 (1).pdf", format: "pdf" as const, pdfLines: lines };
+    expect(adapter.detect(input)?.variant).toBe("usd-statement");
+    const transactions = adapter.parse(input);
+    expect(transactions).toHaveLength(6);
+    expect(transactions[0]).toMatchObject({ kind: "transfer", amount: "-38.25", currency: "USD", originalAmount: "-60000", originalCurrency: "ARS", excludedFromTotals: true });
+    expect(transactions[0].metadata).toMatchObject({ exchangeRateSource: "ARQ personal conversion" });
+    expect(transactions[1]).toMatchObject({ kind: "transfer", description: "Deel Inc", excludedFromTotals: true });
+    expect(transactions[2]).toMatchObject({ kind: "investment_purchase", excludedFromTotals: true });
+    expect(transactions[3]).toMatchObject({ kind: "expense", description: "Cara Goldberg", amount: "-1145", excludedFromTotals: false });
+    expect(transactions[4]).toMatchObject({ kind: "fee", amount: "-3", excludedFromTotals: false });
+    expect(transactions[5]).toMatchObject({ kind: "transfer", excludedFromTotals: true });
   });
 
   it("parses Brubank debit and credit columns", async () => {

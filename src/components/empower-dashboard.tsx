@@ -1,9 +1,11 @@
 "use client";
 
 import {
+  Banknote,
   CheckCircle2,
   CircleHelp,
   FileUp,
+  FolderArchive,
   LayoutDashboard,
   Link2,
   MapPin,
@@ -19,6 +21,8 @@ import {
   X,
 } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useState } from "react";
+import { CashWithdrawals } from "@/components/cash-withdrawals";
+import { FilesByMonth } from "@/components/files-by-month";
 import type { FinanceMutate, TransactionSelection } from "@/components/finance-ui-types";
 import { ImportWorkspace } from "@/components/import-workspace";
 import { LocationsAndStays } from "@/components/locations-stays";
@@ -28,7 +32,7 @@ import { ReportingWorkspace } from "@/components/reporting-workspace";
 import { TransactionLedger } from "@/components/transaction-ledger";
 import { demoWorkspace, type WorkspaceData } from "@/lib/workspace/demo";
 
-type View = "spending" | "transactions" | "questions" | "locations" | "recurring" | "imports" | "investments" | "transfers" | "settings";
+type View = "spending" | "transactions" | "questions" | "locations" | "recurring" | "cash" | "files" | "imports" | "investments" | "transfers" | "settings";
 
 const viewTitles: Record<View, string> = {
   spending: "How you use your money",
@@ -36,6 +40,8 @@ const viewTitles: Record<View, string> = {
   questions: "Questions inbox",
   locations: "Locations and stays",
   recurring: "Recurring expenses",
+  cash: "Cash withdrawals",
+  files: "Files by month",
   imports: "Import statements",
   investments: "Investments",
   transfers: "Transfer chains",
@@ -109,6 +115,8 @@ export function EmpowerDashboard() {
           <NavItem icon={CircleHelp} label="Questions" badge={pendingCount} active={currentView === "questions"} onSelect={() => navigate("questions")} />
           <NavItem icon={MapPin} label="Locations" badge={locationCount} active={currentView === "locations"} onSelect={() => navigate("locations")} />
           <NavItem icon={Repeat2} label="Recurring expenses" active={currentView === "recurring"} onSelect={() => navigate("recurring")} />
+          <NavItem icon={Banknote} label="Cash withdrawals" active={currentView === "cash"} onSelect={() => navigate("cash")} />
+          <NavItem icon={FolderArchive} label="Files by month" active={currentView === "files"} onSelect={() => navigate("files")} />
           <NavItem icon={FileUp} label="Imports" active={currentView === "imports"} onSelect={() => navigate("imports")} />
           <NavItem icon={PiggyBank} label="Investments" active={currentView === "investments"} onSelect={() => navigate("investments")} />
           <NavItem icon={Link2} label="Transfer chains" active={currentView === "transfers"} onSelect={() => navigate("transfers")} />
@@ -137,6 +145,8 @@ export function EmpowerDashboard() {
         {currentView === "questions" ? <QuestionsInbox workspace={workspace} mutate={mutate} openTransactions={openTransactions} /> : null}
         {currentView === "locations" ? <LocationsAndStays workspace={workspace} mutate={mutate} openTransactions={openTransactions} /> : null}
         {currentView === "recurring" ? <RecurringExpenses workspace={workspace} mutate={mutate} openTransactions={openTransactions} /> : null}
+        {currentView === "cash" ? <CashWithdrawals workspace={workspace} openTransactions={openTransactions} /> : null}
+        {currentView === "files" ? <FilesByMonth workspace={workspace} /> : null}
         {currentView === "imports" ? <ImportWorkspace /> : null}
         {currentView === "investments" ? <InvestmentsView workspace={workspace} mutate={mutate} /> : null}
         {currentView === "transfers" ? <TransfersView workspace={workspace} mutate={mutate} /> : null}

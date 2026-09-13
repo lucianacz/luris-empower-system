@@ -21,6 +21,9 @@ export interface WorkspaceAccount {
 
 export interface WorkspaceTransaction {
   id: string;
+  fingerprint?: string;
+  import_batch_id?: string | null;
+  created_at?: string;
   occurred_at: string;
   posted_at?: string | null;
   description: string;
@@ -175,7 +178,7 @@ export interface WorkspaceData {
   transactions: WorkspaceTransaction[];
   questions: WorkspaceQuestion[];
   transferChains: WorkspaceTransferChain[];
-  imports: Array<{ id: string; account_id?: string | null; file_name: string; status: string; row_count: number; imported_count: number; duplicate_count: number; unresolved_count: number; coverage_start?: string | null; coverage_end?: string | null; confirmed_at: string | null; created_at: string }>;
+  imports: Array<{ id: string; account_id?: string | null; institution?: string | null; file_name: string; status: string; row_count: number; imported_count: number; duplicate_count: number; unresolved_count: number; coverage_start?: string | null; coverage_end?: string | null; confirmed_at: string | null; created_at: string }>;
   categories: WorkspaceCategory[];
   spending: SpendingCurrencySummary[];
   investments: WorkspaceInvestment[];

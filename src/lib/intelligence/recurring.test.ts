@@ -26,4 +26,17 @@ describe("recurring expense intelligence", () => {
     const second = { ...first, id: "annual-2", occurred_at: "2026-04-12T00:00:00Z" };
     expect(analyzeRecurring([first, second], "2026-09-13").patterns[0]).toMatchObject({ frequency: "annual", isSubscription: true });
   });
+
+  it("does not call repeated everyday purchases recurring or multi-period", () => {
+    const category = { name: "Groceries", life_area: "Food", is_essential: true, color: "#52796f" };
+    const rows = [
+      { ...payment("a", "2026-08-02", "-4.73"), description: "7-ELEVEN", merchant_name: "7-Eleven", merchant_key: "7 eleven", category_id: "groceries", category },
+      { ...payment("b", "2026-08-06", "-5.12"), description: "7-ELEVEN", merchant_name: "7-Eleven", merchant_key: "7 eleven", category_id: "groceries", category },
+      { ...payment("c", "2026-08-10", "-9.80"), description: "SEVEN-ELEVEN", merchant_name: "7-Eleven", merchant_key: "7 eleven", category_id: "groceries", category },
+      { ...payment("d", "2026-08-13", "-4.95"), description: "SEVEN-ELEVEN", merchant_name: "7-Eleven", merchant_key: "7 eleven", category_id: "groceries", category },
+    ];
+    const result = analyzeRecurring(rows, "2026-09-13");
+    expect(result.patterns).toHaveLength(0);
+    expect(result.questions.some((question) => question.type === "possible_multi_period_payment")).toBe(false);
+  });
 });

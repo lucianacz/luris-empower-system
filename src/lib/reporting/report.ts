@@ -1,4 +1,5 @@
 import Decimal from "decimal.js";
+import { isRuntimeDuplicate } from "@/lib/import/runtime-duplicates";
 import { defaultExpenseCategories, suggestDefaultCategory } from "@/lib/categories/defaults";
 import { completedMonthKeys, monthKeysInRange, normalizeRange, type DateRange } from "./periods";
 import type { WorkspaceTransaction } from "@/lib/workspace/demo";
@@ -186,6 +187,7 @@ function finalizeGroups(groups: Map<string, MutableGroup>): SpendingGroup[] {
 }
 
 function spendingValue(transaction: WorkspaceTransaction) {
+  if (isRuntimeDuplicate(transaction)) return new Decimal(0);
   const amount = new Decimal(transaction.amount || 0);
   if (!transaction.excluded_from_totals && ["expense", "fee", "tax"].includes(transaction.kind) && amount.isNegative()) return amount.abs();
   if (!transaction.excluded_from_totals && transaction.kind === "refund" && amount.isPositive() && !amount.isZero()) return amount.negated();

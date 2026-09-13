@@ -47,7 +47,7 @@ export function createTransaction(input: TransactionInput): NormalizedTransactio
     feeCurrency: input.feeCurrency?.trim().toUpperCase() || null,
     status,
     kind: input.kind,
-    excludedFromTotals: input.excludedFromTotals ?? shouldExclude(input.kind, status),
+    excludedFromTotals: input.excludedFromTotals ?? (new Decimal(amount).isZero() || shouldExclude(input.kind, status)),
     fingerprint: stableFingerprint([
       input.provider,
       sourceId,
