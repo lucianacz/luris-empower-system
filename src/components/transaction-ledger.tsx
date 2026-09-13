@@ -9,14 +9,21 @@ export function TransactionLedger({ workspace, mutate, selection, clearSelection
   const [search, setSearch] = useState("");
   const [kind, setKind] = useState("all");
   const [category, setCategory] = useState("all");
+  const [month, setMonth] = useState("all");
+  const [status, setStatus] = useState("all");
+  const [scope, setScope] = useState("all");
   const selectedIds = useMemo(() => selection ? new Set(selection.transactionIds) : null, [selection]);
+  const months = useMemo(() => [...new Set(workspace.transactions.map((transaction) => transaction.occurred_at.slice(0, 7)))].sort().reverse(), [workspace.transactions]);
   const rows = useMemo(() => workspace.transactions.filter((transaction) => {
     if (selectedIds && !selectedIds.has(transaction.id)) return false;
     if (kind !== "all" && transaction.kind !== kind) return false;
+    if (month !== "all" && !transaction.occurred_at.startsWith(month)) return false;
+    if (status !== "all" && transaction.status !== status) return false;
+    if (scope !== "all" && (transaction.beneficiary_scope ?? "personal") !== scope) return false;
     if (category === "uncategorized" && transaction.category_id) return false;
     if (category !== "all" && category !== "uncategorized" && transaction.category_id !== category) return false;
     return (transaction.description + " " + (transaction.merchant_name ?? "") + " " + (transaction.account?.name ?? "")).toLocaleLowerCase().includes(search.toLocaleLowerCase());
-  }), [category, kind, search, selectedIds, workspace.transactions]);
+  }), [category, kind, month, scope, search, selectedIds, status, workspace.transactions]);
   const live = workspace.mode === "live";
 
   const saveCategory = async (transactionId: string, categoryId: string) => {
@@ -47,12 +54,14 @@ export function TransactionLedger({ workspace, mutate, selection, clearSelection
         </div>
         {selection ? <button onClick={clearSelection} className="inline-flex items-center gap-2 rounded-xl border border-[var(--line)] px-3 py-2 text-xs font-semibold"><X aria-hidden="true" className="size-3.5" />Show all transactions</button> : null}
       </div>
-      <div className="mt-4 grid gap-3 md:grid-cols-[minmax(220px,1fr)_180px_210px_auto]">
-        <label className="relative"><span className="sr-only">Search transactions</span><Search aria-hidden="true" className="absolute left-3 top-3 size-4 text-[var(--muted)]" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search merchant, description, or account" className="h-10 w-full rounded-xl border border-[var(--line)] bg-white pl-9 pr-3 text-sm" /></label>
+      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+        <label className="md:col-span-2 xl:col-span-2"><span className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)]">Search transactions</span><span className="relative block"><Search aria-hidden="true" className="absolute left-3 top-3 size-4 text-[var(--muted)]" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Merchant, description, or account" className="h-10 w-full rounded-xl border border-[var(--line)] bg-white pl-9 pr-3 text-sm" /></span></label>
         <FilterSelect label="Treatment" value={kind} onChange={setKind} options={[["all", "All treatments"], ["expense", "Expense"], ["refund", "Refund"], ["fee", "Fee"], ["tax", "Tax"], ["cash_withdrawal", "Cash withdrawal"], ["transfer", "Transfer"], ["income", "Income"], ["unknown", "Needs review"]]} />
         <FilterSelect label="Category" value={category} onChange={setCategory} options={[["all", "All categories"], ["uncategorized", "Uncategorized"], ...workspace.categories.map((item) => [item.id, item.name] as [string, string])]} />
-        <span className="self-center text-right text-sm text-[var(--muted)]">{rows.length} of {workspace.transactions.length}</span>
+        <FilterSelect label="Month" value={month} onChange={setMonth} options={[["all", "All months"], ...months.map((value) => [value, value] as [string, string])]} />
+        <FilterSelect label="Status" value={status} onChange={setStatus} options={[["all", "All statuses"], ["posted", "Posted"], ["failed", "Rejected"], ["reversed", "Reversed"], ["pending", "Pending"]]} />
       </div>
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-3"><FilterSelect label="Personal / shared" value={scope} onChange={setScope} options={[["all", "Personal and shared"], ["personal", "Personal"], ["shared", "Shared"]]} compact /><div className="flex items-center gap-3"><span className="text-sm text-[var(--muted)]">{rows.length} of {workspace.transactions.length}</span><button type="button" onClick={() => { setSearch(""); setKind("all"); setCategory("all"); setMonth("all"); setStatus("all"); setScope("all"); }} className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-semibold text-[var(--forest)]"><X aria-hidden="true" className="size-3.5" />Clear filters</button></div></div>
     </div>
 
     <div className="overflow-x-auto rounded-[20px] border border-[var(--line)] bg-[var(--surface)]">
@@ -94,8 +103,8 @@ function TransactionRow({ transaction, workspace, live, saveCategory, saveSplit 
   </tr>;
 }
 
-function FilterSelect({ label, value, onChange, options }: { label: string; value: string; onChange: (value: string) => void; options: Array<readonly [string, string]> }) {
-  return <label className="sr-only">{label}<select aria-label={label} value={value} onChange={(event) => onChange(event.target.value)} className="h-10 w-full rounded-xl border border-[var(--line)] bg-white px-3 text-sm">{options.map(([key, text]) => <option key={key} value={key}>{text}</option>)}</select></label>;
+function FilterSelect({ label, value, onChange, options, compact = false }: { label: string; value: string; onChange: (value: string) => void; options: Array<readonly [string, string]>; compact?: boolean }) {
+  return <label className={compact ? "min-w-52" : ""}><span className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)]">{label}</span><select aria-label={label} value={value} onChange={(event) => onChange(event.target.value)} className="h-10 w-full rounded-xl border border-[var(--line)] bg-white px-3 text-sm">{options.map(([key, text]) => <option key={key} value={key}>{text}</option>)}</select></label>;
 }
 function date(value: string) { return new Date(value).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }); }
 function money(value: string | number, currency: string) { try { return new Intl.NumberFormat("en-US", { style: "currency", currency, maximumFractionDigits: 2 }).format(Number(value)); } catch { return currency + " " + Number(value).toLocaleString(); } }

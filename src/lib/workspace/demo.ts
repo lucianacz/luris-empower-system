@@ -190,6 +190,28 @@ export interface WorkspaceData {
   exchangeRatePreference: string | null;
 }
 
+export function createEmptyWorkspace(mode: WorkspaceData["mode"] = "signed-out", asOfDate = new Date().toISOString().slice(0, 10)): WorkspaceData {
+  return {
+    mode,
+    asOfDate,
+    totals: [],
+    accounts: [],
+    transactions: [],
+    questions: [],
+    transferChains: [],
+    imports: [],
+    categories: [],
+    spending: [],
+    investments: [],
+    locationPeriods: [],
+    recurringObligations: [],
+    insights: [],
+    dataQuality: { score: 0, uncategorized: 0, missingFx: 0, unansweredQuestions: 0, uncertainLocations: 0, recurringUnidentified: 0, uncertainCoverage: 0 },
+    suggestedQuestions: [],
+    exchangeRatePreference: null,
+  };
+}
+
 const demoCategories: WorkspaceCategory[] = [
   { id: "demo-housing", name: "Housing", kind: "expense", color: "#7a6c5d", icon: null, parent_id: null, life_area: "Home", is_essential: true },
   { id: "demo-groceries", name: "Groceries", kind: "expense", color: "#52796f", icon: null, parent_id: null, life_area: "Food", is_essential: true },

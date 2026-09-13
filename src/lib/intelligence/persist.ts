@@ -6,6 +6,7 @@ import type { TransactionKind } from "@/lib/import/types";
 import { canonicalMerchant } from "@/lib/reporting/report";
 import type { WorkspaceTransaction } from "@/lib/workspace/demo";
 import { uniqueByFingerprint } from "@/lib/import/runtime-duplicates";
+import { backfillEstimatedReportingValues } from "@/lib/exchange-rates/backfill";
 import { analyzeRecurring } from "./recurring";
 
 export async function rebuildSpendingIntelligence(supabase: SupabaseClient, userId: string) {
@@ -15,6 +16,7 @@ export async function rebuildSpendingIntelligence(supabase: SupabaseClient, user
   await applyKnownMerchantRules(supabase, userId, transactions, categoryIds);
   await applySpecificCategoryRefinements(supabase, userId, transactions, categoryIds);
   await applyHospitalAlemanRule(supabase, userId, transactions, categoryIds.get("Health insurance") ?? null);
+  const estimatedReportingValueCount = await backfillEstimatedReportingValues(supabase, userId);
   const analysis = analyzeRecurring(uniqueByFingerprint(transactions), new Date().toISOString().slice(0, 10));
   let obligationCount = 0;
 
@@ -73,7 +75,7 @@ export async function rebuildSpendingIntelligence(supabase: SupabaseClient, user
     const { error } = await supabase.from("insights").upsert({ user_id: userId, insight_key: insight.key, insight_type: "spending", title: insight.title, body: insight.body, priority: insight.priority, transaction_ids: insight.transactionIds, metadata: {} }, { onConflict: "user_id,insight_key" });
     if (error) throw error;
   }
-  return { obligationCount, questionCount, insightCount: analysis.insights.length };
+  return { obligationCount, questionCount, insightCount: analysis.insights.length, estimatedReportingValueCount };
 }
 
 async function applyCountryOverrides(supabase: SupabaseClient, userId: string, transactions: WorkspaceTransaction[]) {
@@ -192,12 +194,15 @@ const defaultCategoryDetails: Record<string, Omit<NonNullable<WorkspaceTransacti
   "English classes": { life_area: "Growth", is_essential: false, is_extraordinary: false, color: "#7b8b65" },
   Groceries: { life_area: "Food", is_essential: true, is_extraordinary: false, color: "#52796f" },
   "Fuel & gas": { life_area: "Mobility", is_essential: true, is_extraordinary: false, color: "#b56b36" },
+  "Friends & social": { life_area: "Relationships", is_essential: false, is_extraordinary: false, color: "#c65f7c" },
   Hotels: { life_area: "Travel", is_essential: false, is_extraordinary: true, color: "#7b6fa8" },
   Housing: { life_area: "Home", is_essential: true, is_extraordinary: false, color: "#7a6c5d" },
   "Personal care": { life_area: "Lifestyle", is_essential: false, is_extraordinary: false, color: "#b07d8b" },
   Pharmacy: { life_area: "Health", is_essential: true, is_extraordinary: false, color: "#6f9d84" },
   Therapy: { life_area: "Health", is_essential: true, is_extraordinary: false, color: "#568b82" },
   Transport: { life_area: "Mobility", is_essential: true, is_extraordinary: false, color: "#496f5d" },
+  "Tolls & highways": { life_area: "Mobility", is_essential: true, is_extraordinary: false, color: "#7a7542" },
+  "Work tests": { life_area: "Work", is_essential: false, is_extraordinary: false, color: "#6f7782" },
   "Workshops & classes": { life_area: "Growth", is_essential: false, is_extraordinary: false, color: "#9a6b52" },
 };
 

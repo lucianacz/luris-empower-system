@@ -44,4 +44,19 @@ describe("recurring expense intelligence", () => {
     const youtube = ["2026-01-07", "2026-02-07", "2026-03-07"].map((date, index) => ({ ...payment(`youtube-${index}`, date, "-9.49"), description: "APPLE.COM/BILL", merchant_name: "YouTube (via Apple)", merchant_key: "youtube via apple", currency: "USD", category_id: "subscriptions", category: { name: "Subscriptions & software", life_area: "Digital", is_essential: false, color: "#6c63a8" } }));
     expect(analyzeRecurring(youtube, "2026-03-13").patterns[0]).toMatchObject({ providerName: "YouTube (via Apple)", frequency: "monthly", status: "active", isSubscription: true });
   });
+
+  it("keeps the Costa Rica house seasonal without inventing missing months", () => {
+    const house = ["2026-01-29", "2026-02-28", "2026-03-30", "2026-08-30"].map((date, index) => ({ ...payment(`house-${index}`, date, String(-1180 - index * 10)), description: "Cara Goldberg", merchant_name: "Casa Costa Rica · Cara Goldberg", merchant_key: "casa costa rica cara goldberg", currency: "USD", category_id: "housing", category: { name: "Housing", life_area: "Home", is_essential: true, color: "#7a6c5d" } }));
+    const result = analyzeRecurring(house, "2026-09-13");
+    expect(result.patterns[0]).toMatchObject({ frequency: "monthly", status: "uncertain", seasonalMonthsPerYear: 6, missingMonths: [], expectedNextPayment: null });
+    expect(result.questions.some((question) => /casa costa rica|cara goldberg/i.test(question.prompt))).toBe(false);
+  });
+
+  it("recognizes confirmed Google One and ChatGPT billing schedules", () => {
+    const google = { ...payment("google", "2026-04-01", "-99.99"), description: "Google One", merchant_name: "Google One", merchant_key: "google one", currency: "USD", category_id: "subscriptions", category: { name: "Subscriptions & software", life_area: "Digital", is_essential: false, color: "#6c63a8" } };
+    const chatgpt = ["2026-06-14", "2026-07-14", "2026-08-14"].map((date, index) => ({ ...google, id: `chatgpt-${index}`, occurred_at: `${date}T00:00:00Z`, amount: "-100", description: "OPENAI *CHATGPT SUBSCR", merchant_name: "ChatGPT", merchant_key: "chatgpt" }));
+    const patterns = analyzeRecurring([google, ...chatgpt], "2026-09-13").patterns;
+    expect(patterns.find((pattern) => pattern.key === "google one")).toMatchObject({ providerName: "Google One", frequency: "annual", isSubscription: true });
+    expect(patterns.find((pattern) => pattern.key === "chatgpt")).toMatchObject({ providerName: "ChatGPT", frequency: "monthly", latestAmount: 100, status: "active" });
+  });
 });

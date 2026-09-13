@@ -31,6 +31,13 @@ describe("default expense categories", () => {
     expect(classify("MINISUPER WILLY WILLYS")).toBe("Groceries");
     expect(classify("SERVICENTRO EL CONEJO")).toBe("Fuel & gas");
     expect(classify("ANIBAL MARCOS PAZ")).toBe("Diving & activities");
+    expect(classify("Martin Ackerman")).toBe("Friends & social");
+    expect(classify("CAROLINA AFERGAN")).toBe("Friends & social");
+    expect(classify("AUSOL")).toBe("Tolls & highways");
+    expect(classify("SP SWEET-CHEMISTRY-SKI")).toBe("Work tests");
+    expect(matchKnownMerchant("SP SWEET-CHEMISTRY-SKI")?.excludedFromTotals).toBe(true);
+    expect(matchKnownMerchant("OPENAI *CHATGPT SUBSCR")?.recurrenceHint).toBe("monthly");
+    expect(matchKnownMerchant("Card charge (GOOGLE *Google One)")?.recurrenceHint).toBe("annual");
     expect(matchKnownMerchant("APPLE.COM/BILL", { amount: "-9.49", currency: "USD" })?.displayName).toBe("YouTube (via Apple)");
     expect(matchKnownMerchant("APPLE.COM/BILL", { amount: "-0.99", currency: "USD" })?.displayName).toBe("iCloud (via Apple)");
     expect(matchKnownMerchant("APPLE.COM/BILL", { amount: "-12.99", currency: "USD" })).toBeNull();

@@ -1,6 +1,6 @@
 import Decimal from "decimal.js";
 import { findCoverageGaps } from "@/lib/accounts/coverage";
-import { demoWorkspace } from "@/lib/workspace/demo";
+import { createEmptyWorkspace } from "@/lib/workspace/demo";
 import { hasSupabaseEnv } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
 import { buildSpendingSummary } from "@/lib/spending/summary";
@@ -11,10 +11,10 @@ import { cleanDescription } from "@/lib/import/normalize";
 import type { WorkspaceTransaction } from "@/lib/workspace/demo";
 
 export async function GET() {
-  if (!hasSupabaseEnv()) return Response.json(demoWorkspace);
+  if (!hasSupabaseEnv()) return Response.json(createEmptyWorkspace("signed-out"));
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return Response.json({ ...demoWorkspace, mode: "signed-out" as const });
+  if (!user) return Response.json(createEmptyWorkspace("signed-out"));
 
   const [accounts, questions, chains, imports, categories, investments, locationPeriods, locationHints, recurringObligations, profile] = await Promise.all([
     supabase.from("financial_accounts").select("id,institution,name,currency,last_imported_at,last_transaction_at,coverage_start,coverage_end").eq("user_id", user.id).order("name"),

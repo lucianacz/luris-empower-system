@@ -9,7 +9,7 @@ export async function POST() {
   if (!user) return Response.json({ error: "Sign in first." }, { status: 401 });
   try {
     const result = await rebuildSpendingIntelligence(supabase, user.id);
-    return Response.json({ ...result, message: `Analysis refreshed. ${result.obligationCount} recurring patterns and ${result.questionCount} priority questions are ready.` });
+    return Response.json({ ...result, message: `Analysis refreshed. ${result.obligationCount} recurring patterns, ${result.questionCount} priority questions, and ${result.estimatedReportingValueCount} estimated historical USD values are ready.` });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Spending analysis could not be refreshed." }, { status: 422 });
   }

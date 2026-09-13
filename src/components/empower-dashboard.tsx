@@ -30,7 +30,7 @@ import { QuestionsInbox } from "@/components/questions-inbox";
 import { RecurringExpenses } from "@/components/recurring-expenses";
 import { ReportingWorkspace } from "@/components/reporting-workspace";
 import { TransactionLedger } from "@/components/transaction-ledger";
-import { demoWorkspace, type WorkspaceData } from "@/lib/workspace/demo";
+import { createEmptyWorkspace, type WorkspaceData } from "@/lib/workspace/demo";
 
 type View = "spending" | "transactions" | "questions" | "locations" | "recurring" | "cash" | "files" | "imports" | "investments" | "transfers" | "settings";
 const views = new Set<View>(["spending", "transactions", "questions", "locations", "recurring", "cash", "files", "imports", "investments", "transfers", "settings"]);
@@ -52,7 +52,7 @@ const viewTitles: Record<View, string> = {
 export function EmpowerDashboard() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [currentView, setCurrentView] = useState<View>("spending");
-  const [workspace, setWorkspace] = useState<WorkspaceData>(demoWorkspace);
+  const [workspace, setWorkspace] = useState<WorkspaceData>(() => createEmptyWorkspace());
   const [selection, setSelection] = useState<TransactionSelection | null>(null);
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState("");
@@ -125,6 +125,8 @@ export function EmpowerDashboard() {
     setSelection(nextSelection);
     navigate("transactions");
   };
+  if (loading) return <main className="grid min-h-screen place-items-center px-6"><div role="status" aria-live="polite" className="text-center"><span className="mx-auto grid size-12 place-items-center rounded-2xl bg-[var(--forest-soft)] text-[var(--forest)]"><RefreshCw aria-hidden="true" className="size-5 animate-spin" /></span><h1 className="mt-4 text-lg font-semibold">Loading your financial workspace</h1><p className="mt-2 text-sm text-[var(--muted)]">Fetching your imported transactions securely…</p></div></main>;
+
   const pendingCount = workspace.questions.length + workspace.suggestedQuestions.length;
   const locationCount = workspace.locationPeriods.filter((period) => period.status === "suggested").length;
 
@@ -236,7 +238,7 @@ function ExchangeRateSettings({ workspace, mutate }: { workspace: WorkspaceData;
   return <article className="rounded-[20px] border border-[var(--line)] bg-[var(--surface)] p-5"><h2 className="font-semibold">Historical exchange rates</h2><p className="mt-2 text-sm leading-6 text-[var(--muted)]">USD is the reporting currency. Historical ARS is never converted with today&apos;s rate or an unconfirmed method.</p><Field label="Preferred ARS method"><select value={method} onChange={(event) => setMethod(event.target.value)} className="field"><option value="">Ask me before choosing</option><option value="personal_arq_conversion">My linked ARQ conversion</option><option value="mep">MEP</option><option value="official">Official</option><option value="blue">Blue</option><option value="card">Card</option><option value="custom">Custom</option></select></Field><button disabled={workspace.mode !== "live"} onClick={() => void saveMethod()} className="mt-2 w-full rounded-xl border border-[var(--line)] px-3 py-2 text-sm font-semibold disabled:opacity-45">Save methodology</button><form onSubmit={(event) => void saveRate(event)} className="mt-5 grid grid-cols-2 gap-2 border-t border-[var(--line)] pt-5"><Field label="Date"><input required name="rateDate" type="date" className="field" /></Field><Field label="From"><input required name="sourceCurrency" defaultValue="ARS" className="field" /></Field><Field label="USD per unit"><input required name="rateToUsd" type="number" min="0" step="any" className="field" /></Field><Field label="Source"><input required name="source" placeholder="ARQ conversion" className="field" /></Field><div className="col-span-2"><Field label="Methodology"><input required name="methodology" placeholder="Personal conversion / MEP / other" className="field" /></Field></div><label className="col-span-2 flex items-center gap-2 text-xs"><input name="estimated" type="checkbox" />Mark this rate as estimated</label><button disabled={workspace.mode !== "live"} className="col-span-2 rounded-xl bg-[var(--forest)] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-45">Apply rate to that date</button></form></article>;
 }
 
-function ConnectionCard({ live }: { live: boolean }) { return <article className="rounded-[20px] border border-[var(--line)] bg-[var(--surface)] p-5"><h2 className="font-semibold">Connection</h2><p className="mt-2 text-sm leading-6 text-[var(--muted)]">{live ? "Signed in. Database, private storage, and Row Level Security are active." : "Supabase is not connected in this checkout. The dashboard is showing traceable example transactions; no imported records have been reset."}</p>{!live ? <a href="/login" className="mt-4 inline-block rounded-xl bg-[var(--forest)] px-4 py-2.5 text-sm font-semibold text-white">Open sign in</a> : null}</article>; }
+function ConnectionCard({ live }: { live: boolean }) { return <article className="rounded-[20px] border border-[var(--line)] bg-[var(--surface)] p-5"><h2 className="font-semibold">Connection</h2><p className="mt-2 text-sm leading-6 text-[var(--muted)]">{live ? "Signed in. Database, private storage, and Row Level Security are active." : "Sign in to load your private financial workspace. No sample or demo transactions are displayed."}</p>{!live ? <a href="/login" className="mt-4 inline-block rounded-xl bg-[var(--forest)] px-4 py-2.5 text-sm font-semibold text-white">Open sign in</a> : null}</article>; }
 function NavItem({ icon: Icon, label, active, badge, onSelect }: { icon: typeof LayoutDashboard; label: string; active: boolean; badge?: number; onSelect: () => void }) { return <button onClick={onSelect} className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left font-medium transition ${active ? "bg-[var(--forest-soft)] text-[var(--forest)]" : "text-[var(--muted)] hover:bg-[var(--paper)] hover:text-[var(--ink)]"}`} aria-current={active ? "page" : undefined}><Icon aria-hidden="true" className="size-[18px]" /><span>{label}</span>{badge ? <span className="ml-auto rounded-full bg-[var(--amber-soft)] px-2 py-0.5 text-[11px] font-bold text-[#8a4b21]">{badge}</span> : null}</button>; }
 function SectionHeading({ title, subtitle }: { title: string; subtitle: string }) { return <div className="border-b border-[var(--line)] px-5 py-5"><h2 className="font-semibold">{title}</h2><p className="mt-1 text-sm text-[var(--muted)]">{subtitle}</p></div>; }
 function EmptyPanel({ icon: Icon, title, body }: { icon: typeof CheckCircle2; title: string; body: string }) { return <div className="grid min-h-64 place-items-center rounded-[22px] border border-[var(--line)] bg-[var(--surface)] p-8 text-center"><div className="max-w-md"><span className="mx-auto grid size-12 place-items-center rounded-2xl bg-[var(--forest-soft)] text-[var(--forest)]"><Icon aria-hidden="true" className="size-5" /></span><h2 className="mt-4 font-semibold">{title}</h2><p className="mt-2 text-sm leading-6 text-[var(--muted)]">{body}</p></div></div>; }

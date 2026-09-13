@@ -16,7 +16,7 @@ export function ReportingWorkspace({ workspace, loading, openTransactions, openQ
   const report = useMemo(() => buildSpendingReport(workspace.transactions, range, today), [range, today, workspace.transactions]);
   const categoryTabs = useMemo(() => {
     const tabs = report.categories.slice(0, 14);
-    for (const requiredName of ["Hotels", "Diving & activities"]) {
+    for (const requiredName of ["Friends & social", "Hotels", "Diving & activities"]) {
       if (tabs.some((category) => category.name === requiredName)) continue;
       const category = workspace.categories.find((item) => item.name === requiredName);
       if (category) tabs.push({ id: category.id, name: category.name, color: category.color ?? "#8f8a82", detail: category.life_area, essential: category.is_essential, extraordinary: category.is_extraordinary, amount: 0, transactionIds: [] });
@@ -51,7 +51,7 @@ export function ReportingWorkspace({ workspace, loading, openTransactions, openQ
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[var(--line)] pt-4 text-sm"><p><strong>{rangeLabel(report.range)}</strong><span className="ml-2 text-[var(--muted)]">{report.transactionCount} included transactions</span></p><div className="flex rounded-xl border border-[var(--line)] p-1" aria-label="Reporting basis"><button onClick={() => setBasis("cash")} className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${basis === "cash" ? "bg-[var(--forest-soft)] text-[var(--forest)]" : "text-[var(--muted)]"}`}>Actual cash flow</button><button onClick={() => setBasis("normalized")} className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${basis === "normalized" ? "bg-[var(--forest-soft)] text-[var(--forest)]" : "text-[var(--muted)]"}`}>Monthly normalized cost</button></div></div>
     </div>
 
-    {workspace.mode !== "live" ? <div className="rounded-xl border border-[#e3bf9f] bg-[#fbefe4] px-4 py-3 text-sm text-[#74411f]"><strong>Example data.</strong> The visible USD 11,824.42 is now fully backed by the example transactions below. Connect Supabase to replace it with imported data.</div> : null}
+    {workspace.mode !== "live" ? <div className="rounded-xl border border-[#e3bf9f] bg-[#fbefe4] px-4 py-3 text-sm text-[#74411f]"><strong>No financial data loaded.</strong> Sign in to open your private imported transactions.</div> : null}
     {report.missingFxTransactionIds.length ? <button onClick={() => openTransactions({ title: "Transactions missing a USD conversion", transactionIds: report.missingFxTransactionIds, range: report.range })} className="flex w-full items-start gap-3 rounded-xl border border-[#e3bf9f] bg-[#fbefe4] px-4 py-3 text-left text-sm text-[#74411f]"><AlertTriangle aria-hidden="true" className="mt-0.5 size-4 shrink-0" /><span><strong>{report.missingFxTransactionIds.length} transactions are excluded from the USD total.</strong> No historical exchange rate has been confirmed for them. Open the exact transactions.</span></button> : null}
 
     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
