@@ -24,11 +24,15 @@ The current MVP is built around the supplied Deel, ARQ, Brubank, Payoneer, and A
 - Failed, pending, and reversed transaction retention without affecting totals
 - Partial, one-to-many, many-to-one, cross-currency, and multi-step transfer suggestions
 - Questions for unresolved incoming movements and cash withdrawals
+- Live normalized ledger with category assignment and personal/household splits
+- Questions Inbox decisions that update transaction treatment and totals
+- Transfer-chain review with confirm/reject actions and per-leg allocations
+- Account freshness, statement coverage-gap, and safe-overlap indicators
 - Secure original-file storage linked to import history
 - Whole-batch rollback
-- Separate investment schema and Alpaca statement detection
+- Separate investment schema, Alpaca statement detection, and manual positions/snapshots
 
-The supplied real files were previewed locally through their adapters. They are not copied into this repository and are not committed. See [statement mapping notes](docs/statement-mappings.md) for the anonymized format analysis.
+All 37 supplied real files were previewed locally through their production adapters: 14 CSV exports and 23 PDF statements. Provider detection succeeded for Deel, ARQ, Brubank, Payoneer, and Alpaca, including empty ARQ statement months. The originals were not modified, copied into this repository, or committed. See [statement mapping notes](docs/statement-mappings.md) for the anonymized format analysis.
 
 ## Local setup
 
@@ -108,6 +112,8 @@ Rollback removes transactions created by the selected batch and marks the batch 
 5. Confirm the import after signing in.
 6. The app stores the original file, imports only new rows, opens questions for uncertainty, and rebuilds transfer-chain suggestions.
 
+The overview then shows each account's last import, last transaction, missing periods, overlapping statement periods, and whether a new statement is recommended.
+
 The checksum prevents a repeated file from creating another batch. Overlapping exports are still safe because provider IDs and transaction fingerprints catch repeated rows.
 
 ## Accounting rules
@@ -131,6 +137,8 @@ npm run build
 
 The committed fixtures are anonymized and preserve only the structural characteristics needed to test the adapters.
 
+The current automated suite covers provider parsing, conservative classification, duplicate keys, statement gaps, cross-currency matching, partial allocations, and multi-step chains. A separate local audit exercised every supplied source file without persisting or copying its contents.
+
 ## Deploy to Vercel
 
 1. Push this repository to GitHub.
@@ -146,3 +154,5 @@ The statement preview and commit handlers use the Node.js runtime and set bounde
 CSV/PDF/XLSX upload remains a permanent integration path. Provider APIs are a future option only when they are official, work with the account type, expose the needed transaction or balance data, support secure least-privilege access, require no banking-password storage, and justify their cost and maintenance.
 
 Do not connect undocumented ARQ or Brubank mobile APIs, intercept app traffic, bypass certificate controls, reverse-engineer authentication, or store mobile session tokens.
+
+Detailed investment-statement automation, budgets, life-period reports, cash estimation, and direct provider APIs remain later phases. The schema reserves those concepts now; the stable expense/import workflow does not depend on them.
