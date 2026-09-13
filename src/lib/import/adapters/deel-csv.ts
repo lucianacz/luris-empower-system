@@ -41,9 +41,13 @@ export class DeelCsvAdapter implements ImportAdapter {
       const sourceType = row["Transaction Type"].toLowerCase();
       const amount = parseAmount(row["Transaction Amount"]);
       const transferred = parseAmount(row["Amount Transferred"]);
-      const providerFees = parseAmount(row["Provider Fee"]).plus(parseAmount(row["Provider Fees"])).plus(parseAmount(row["Cross Border Fees"])).plus(parseAmount(row["Exchange Rate Fees"]));
+      // Deel exports the same provider charge under both singular and plural
+      // column names in some reports. Treat them as aliases, then add genuinely
+      // separate cross-border and exchange-rate charges.
+      const providerFee = Decimal.max(parseAmount(row["Provider Fee"]).abs(), parseAmount(row["Provider Fees"]).abs());
+      const itemizedFees = providerFee.plus(parseAmount(row["Cross Border Fees"]).abs()).plus(parseAmount(row["Exchange Rate Fees"]).abs());
       const inferredFee = amount.isNegative() && transferred.greaterThan(0) ? Decimal.max(amount.abs().minus(transferred), 0) : new Decimal(0);
-      const fee = Decimal.max(providerFees, inferredFee);
+      const fee = Decimal.max(itemizedFees, inferredFee);
       const kind: TransactionKind = sourceType.includes("client_payment") ? "income" : sourceType.includes("withdraw") ? "transfer" : sourceType.includes("fee") ? "fee" : "unknown";
       const method = row["Withdraw Method Custom Name"] || row["Withdraw Method"];
       const warnings = status === "failed" ? ["Failed transaction retained for history and excluded from totals."] : kind === "unknown" ? ["Transaction type needs review."] : [];

@@ -19,6 +19,11 @@ export interface KnownMerchantRule {
   currency?: string;
   kind?: TransactionKind;
   excludedFromTotals?: boolean;
+  ignoredMissingMonths?: string[];
+  validDuplicateMonths?: string[];
+  confirmedPlanChangeOn?: string;
+  paidByPartner?: boolean;
+  notes?: string;
 }
 
 export interface KnownMerchantContext {
@@ -34,7 +39,7 @@ export function resolvedKnownMerchantKind(rule: KnownMerchantRule | null, amount
 
 export const knownMerchantRules: KnownMerchantRule[] = [
   { id: "apple-youtube", pattern: /\bapple\.com\/bill\b/i, displayName: "YouTube (via Apple)", categoryName: "Subscriptions & software", recurrenceHint: "monthly", recurringStatus: "active", subscription: true, beneficiaryScope: "personal", amount: 9.49, currency: "USD" },
-  { id: "apple-icloud", pattern: /\bapple\.com\/bill\b/i, displayName: "iCloud (via Apple)", categoryName: "Subscriptions & software", recurrenceHint: "monthly", recurringStatus: "active", subscription: true, beneficiaryScope: "personal", amount: 0.99, currency: "USD" },
+  { id: "apple-icloud", pattern: /\bapple\.com\/bill\b/i, displayName: "iCloud (via Apple)", categoryName: "Subscriptions & software", recurrenceHint: "monthly", recurringStatus: "active", subscription: true, beneficiaryScope: "personal", amount: 0.99, currency: "USD", ignoredMissingMonths: ["2025-12"], notes: "Not subscribed in December 2025; resumed afterward." },
   { id: "seven-eleven", pattern: /\b(?:7|seven)[ -]?eleven\b/i, displayName: "7-Eleven", categoryName: "Groceries", beneficiaryScope: "shared" },
   { id: "citymall", pattern: /\bcity\s*mall\b/i, displayName: "Citymall", categoryName: "Groceries", countryCode: "CR", beneficiaryScope: "shared" },
   { id: "golden-mall", pattern: /\bgolden\s*mall\b/i, displayName: "Golden Mall", categoryName: "Groceries", countryCode: "CR", beneficiaryScope: "shared" },
@@ -60,8 +65,9 @@ export const knownMerchantRules: KnownMerchantRule[] = [
   { id: "centro-llantero", pattern: /\bcentro\s+llantero\s+del\s+sur\b/i, displayName: "Centro Llantero del Sur", categoryName: "Car repairs", countryCode: "CR" },
   { id: "sephora", pattern: /\bsephora\b/i, displayName: "Sephora", categoryName: "Personal care" },
   { id: "enterprise", pattern: /\benterprise\b/i, displayName: "Enterprise", categoryName: "Car rental" },
-  { id: "anthropic-claude", pattern: /\banthropic\*?\s*claude\s+sub\b|\bclaude\.ai\s+subscription\b/i, displayName: "Claude", categoryName: "Subscriptions & software", recurrenceHint: "monthly", recurringStatus: "active", subscription: true, beneficiaryScope: "personal" },
-  { id: "openai-chatgpt", pattern: /\bopenai\s*\*?\s*chatgpt\s+subscr\b|\bchatgpt\s+subscription\b/i, displayName: "ChatGPT", categoryName: "Subscriptions & software", recurrenceHint: "monthly", recurringStatus: "active", subscription: true, beneficiaryScope: "personal" },
+  { id: "anthropic-claude", pattern: /\banthropic\*?\s*claude\s+sub\b|\bclaude\.ai\s+subscription\b/i, displayName: "Claude", categoryName: "Subscriptions & software", recurrenceHint: "monthly", recurringStatus: "active", subscription: true, beneficiaryScope: "personal", ignoredMissingMonths: ["2026-05", "2026-06"], confirmedPlanChangeOn: "2026-08-25", notes: "Paused before resubscribing in July 2026; latest amount is the normal price after a plan change." },
+  { id: "openai-chatgpt", pattern: /\bopenai\s*\*?\s*chatgpt\s+subscr\b|\bchatgpt\s+subscription\b/i, displayName: "ChatGPT", categoryName: "Subscriptions & software", recurrenceHint: "monthly", recurringStatus: "active", subscription: true, beneficiaryScope: "personal", validDuplicateMonths: ["2026-04"], confirmedPlanChangeOn: "2026-04-14", notes: "Both April 2026 charges are valid; the plan changed on April 14." },
+  { id: "starlink", pattern: /\bstarlink\s+internet\b/i, displayName: "Starlink Internet", categoryName: "Bills & utilities", countryCode: "CR", recurrenceHint: "monthly", recurringStatus: "active", beneficiaryScope: "shared", paidByPartner: true, notes: "Shared household service paid by partner; gaps in this account are not missing bills." },
   { id: "google-one", pattern: /\bgoogle\s*\*?\s*google\s+one\b|\bgoogle\s+one\b/i, displayName: "Google One", categoryName: "Subscriptions & software", recurrenceHint: "annual", recurringStatus: "active", subscription: true, beneficiaryScope: "personal" },
   { id: "martin-ackerman", pattern: /\bmartin\s+ackerman\b/i, displayName: "Martin Ackerman", categoryName: "Friends & social", recurrenceDenied: true, beneficiaryScope: "personal" },
   { id: "carolina-afergan", pattern: /\bcarolina\s+afergan\b/i, displayName: "Carolina Afergan", categoryName: "Friends & social", recurrenceDenied: true, beneficiaryScope: "personal" },

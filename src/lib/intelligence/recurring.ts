@@ -73,21 +73,35 @@ export function analyzeRecurring(transactions: WorkspaceTransaction[], today: st
     const frequency = annual ? "annual" : weekly || (known?.recurrenceHint === "weekly" && rows.length >= 6 && distinctMonths >= 3) ? "weekly" : monthly ? "monthly" : "uncertain";
     if (frequency === "uncertain") continue;
     const amounts = sorted.map((row) => Math.abs(Number(row.amount)));
-    const medianAmount = median(amounts);
+    const baselineRows = known?.confirmedPlanChangeOn
+      ? sorted.filter((row) => row.occurred_at.slice(0, 10) >= known.confirmedPlanChangeOn!)
+      : sorted;
+    const comparisonRows = baselineRows.length ? baselineRows : sorted;
+    const baselineAmounts = comparisonRows.map((row) => Math.abs(Number(row.amount)));
+    const medianAmount = median(baselineAmounts);
     const lastPayment = dates.at(-1)!;
     const expectedDays = frequency === "weekly" ? 7 : frequency === "monthly" ? 30 : frequency === "annual" ? 365 : null;
     const staleDays = daysBetween(lastPayment, today);
     const seasonalMonthsPerYear = known?.seasonalMonthsPerYear ?? null;
     const status = seasonalMonthsPerYear ? "uncertain" : known?.recurringStatus ?? (expectedDays == null ? "uncertain" : staleDays <= expectedDays * 1.8 ? "active" : staleDays > expectedDays * 3 ? "inactive" : "uncertain");
-    const expectedNextPayment = seasonalMonthsPerYear || expectedDays == null ? null : addDays(lastPayment, expectedDays);
-    const doubled = seasonalMonthsPerYear ? [] : sorted.filter((row) => Math.abs(Number(row.amount)) >= medianAmount * 1.75 && medianAmount > 0).map((row) => row.id);
-    const missingMonths = frequency === "monthly" && !seasonalMonthsPerYear ? findMissingMonths(dates) : [];
-    const duplicateMonths = frequency === "monthly" && !seasonalMonthsPerYear ? [...new Set(dates.map((date) => date.slice(0, 7)).filter((month, index, months) => months.indexOf(month) !== index))] : [];
-    const previousAmount = amounts.at(-2) ?? amounts.at(-1)!;
-    const latestIncrease = previousAmount > 0 ? amounts.at(-1)! / previousAmount - 1 : 0;
+    const expectedNextPayment = seasonalMonthsPerYear || known?.paidByPartner || expectedDays == null ? null : addDays(lastPayment, expectedDays);
+    const doubled = seasonalMonthsPerYear ? [] : comparisonRows.filter((row) => Math.abs(Number(row.amount)) >= medianAmount * 1.75 && medianAmount > 0).map((row) => row.id);
+    const ignoredMissingMonths = new Set(known?.ignoredMissingMonths ?? []);
+    const missingMonths = frequency === "monthly" && !seasonalMonthsPerYear && !known?.paidByPartner ? findMissingMonths(dates).filter((month) => !ignoredMissingMonths.has(month)) : [];
+    const validDuplicateMonths = new Set(known?.validDuplicateMonths ?? []);
+    const duplicateMonths = frequency === "monthly" && !seasonalMonthsPerYear ? [...new Set(dates.map((date) => date.slice(0, 7)).filter((month, index, months) => months.indexOf(month) !== index && !validDuplicateMonths.has(month)))] : [];
+    const previousAmount = baselineAmounts.at(-2) ?? baselineAmounts.at(-1)!;
+    const latestIncrease = baselineAmounts.length >= 2 && previousAmount > 0 ? baselineAmounts.at(-1)! / previousAmount - 1 : 0;
     const latestGap = gaps.at(-1) ?? expectedDays;
     const isSubscription = known?.subscription === true || categoryName === "Subscriptions & software" || !categoryName && ["monthly", "annual"].includes(frequency) && coefficientOfVariation(amounts) < 0.05;
-    const pattern: RecurringPattern = { key, providerName: known?.displayName ?? (sorted.at(-1)!.merchant_name || sorted.at(-1)!.description), frequency, status, currency: sorted.at(-1)!.currency, medianAmount, latestAmount: amounts.at(-1)!, lastPayment, expectedNextPayment, transactionIds: sorted.map((row) => row.id), missingMonths, doubledTransactionIds: doubled, categoryName, isSubscription, seasonalMonthsPerYear, scheduleNote: seasonalMonthsPerYear ? `Seasonal housing · around ${seasonalMonthsPerYear} months per year` : null };
+    const scheduleNote = known?.paidByPartner
+      ? "Shared service · paid by partner; months without a charge in your accounts are not missing payments"
+      : seasonalMonthsPerYear
+        ? `Seasonal housing · around ${seasonalMonthsPerYear} months per year`
+        : known?.confirmedPlanChangeOn
+          ? `Current price baseline starts ${known.confirmedPlanChangeOn}`
+          : null;
+    const pattern: RecurringPattern = { key, providerName: known?.displayName ?? (sorted.at(-1)!.merchant_name || sorted.at(-1)!.description), frequency, status, currency: sorted.at(-1)!.currency, medianAmount, latestAmount: amounts.at(-1)!, lastPayment, expectedNextPayment, transactionIds: sorted.map((row) => row.id), missingMonths, doubledTransactionIds: doubled, categoryName, isSubscription, seasonalMonthsPerYear, scheduleNote };
     patterns.push(pattern);
 
     if (!categoryName) questions.push({ key: `recurring-category:${key}`, type: "recurring_unidentified", prompt: `You paid ${pattern.providerName} ${rows.length} times. What is this expense?`, explanation: `${capitalize(frequency)} payments are around ${pattern.currency} ${medianAmount.toFixed(2)}.`, priority: Math.min(95, 55 + rows.length * 3), transactionIds: pattern.transactionIds, merchantKey: key });
@@ -95,8 +109,8 @@ export function analyzeRecurring(transactions: WorkspaceTransaction[], today: st
     if (frequency === "monthly" && doubled.length) questions.push({ key: `recurring-double:${key}:${doubled.at(-1)}`, type: "possible_multi_period_payment", prompt: `A ${pattern.providerName} payment is approximately twice its usual amount. Does it cover more than one service month?`, explanation: `Typical payment: ${pattern.currency} ${medianAmount.toFixed(2)}. The unusual payment is linked below.`, priority: 92, transactionIds: unique([...pattern.transactionIds.slice(-4), ...doubled]), merchantKey: key });
     if (duplicateMonths.length) questions.push({ key: `recurring-two-payments:${key}:${duplicateMonths.at(-1)}`, type: "recurring_two_payments", prompt: `Two ${pattern.providerName} payments appear in ${formatMonth(duplicateMonths.at(-1)!)}. Are both valid charges?`, explanation: "Both payments are included as evidence so duplicates, installments, and separate service periods can be distinguished.", priority: 88, transactionIds: sorted.filter((row) => row.occurred_at.startsWith(duplicateMonths.at(-1)!)).map((row) => row.id), merchantKey: key });
     if (latestIncrease >= 0.2 && !seasonalMonthsPerYear) questions.push({ key: `recurring-price-increase:${key}:${lastPayment}`, type: "recurring_price_increase", prompt: `${pattern.providerName} increased by ${Math.round(latestIncrease * 100)}% at the latest payment. Is this the new normal amount?`, explanation: `Previous payment: ${pattern.currency} ${previousAmount.toFixed(2)}. Latest payment: ${pattern.currency} ${amounts.at(-1)!.toFixed(2)}.`, priority: 82, transactionIds: pattern.transactionIds.slice(-2), merchantKey: key });
-    if (expectedDays && latestGap && !seasonalMonthsPerYear && Math.abs(latestGap - expectedDays) > expectedDays * 0.6 && !missingMonths.length) questions.push({ key: `recurring-frequency-change:${key}:${lastPayment}`, type: "recurring_frequency_changed", prompt: `${pattern.providerName} arrived on a different schedule. Did its billing frequency change?`, explanation: `The latest gap was ${latestGap} days; the established ${frequency} pattern is approximately ${expectedDays} days.`, priority: 72, transactionIds: pattern.transactionIds.slice(-3), merchantKey: key });
-    if (status !== "active" && !seasonalMonthsPerYear) questions.push({ key: `recurring-stopped:${key}`, type: "recurring_may_have_stopped", prompt: `${pattern.providerName} may have stopped. Is it still active?`, explanation: `The last ${frequency} payment was ${lastPayment}.`, priority: 68, transactionIds: pattern.transactionIds.slice(-3), merchantKey: key });
+    if (expectedDays && latestGap && !seasonalMonthsPerYear && !known?.paidByPartner && Math.abs(latestGap - expectedDays) > expectedDays * 0.6 && !missingMonths.length) questions.push({ key: `recurring-frequency-change:${key}:${lastPayment}`, type: "recurring_frequency_changed", prompt: `${pattern.providerName} arrived on a different schedule. Did its billing frequency change?`, explanation: `The latest gap was ${latestGap} days; the established ${frequency} pattern is approximately ${expectedDays} days.`, priority: 72, transactionIds: pattern.transactionIds.slice(-3), merchantKey: key });
+    if (status !== "active" && !seasonalMonthsPerYear && !known?.paidByPartner) questions.push({ key: `recurring-stopped:${key}`, type: "recurring_may_have_stopped", prompt: `${pattern.providerName} may have stopped. Is it still active?`, explanation: `The last ${frequency} payment was ${lastPayment}.`, priority: 68, transactionIds: pattern.transactionIds.slice(-3), merchantKey: key });
 
   }
 

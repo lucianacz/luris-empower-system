@@ -122,7 +122,7 @@ async function applyKnownMerchantRules(supabase: SupabaseClient, userId: string,
         const { error } = await supabase.from("transactions").update(update).eq("user_id", userId).in("id", merchantTransactions.slice(index, index + 500).map((transaction) => transaction.id));
         if (error) throw error;
       }
-      const { error: merchantError } = await supabase.from("merchant_profiles").upsert({ user_id: userId, merchant_key: merchantKey, display_name: merchantName, category_id: categoryId, person_id: personId, country_code: rule.countryCode ?? merchantTransactions.find((transaction) => transaction.merchant_country)?.merchant_country ?? null, notes: rule.personRole ?? null }, { onConflict: "user_id,merchant_key" });
+      const { error: merchantError } = await supabase.from("merchant_profiles").upsert({ user_id: userId, merchant_key: merchantKey, display_name: merchantName, category_id: categoryId, person_id: personId, country_code: rule.countryCode ?? merchantTransactions.find((transaction) => transaction.merchant_country)?.merchant_country ?? null, notes: rule.notes ?? rule.personRole ?? null }, { onConflict: "user_id,merchant_key" });
       if (merchantError) throw merchantError;
       for (const transaction of merchantTransactions) {
         transaction.category_id = categoryId;
@@ -189,6 +189,7 @@ function categoryFor(name: string): WorkspaceTransaction["category"] {
 
 const defaultCategoryDetails: Record<string, Omit<NonNullable<WorkspaceTransaction["category"]>, "name">> = {
   "Alternative therapy": { life_area: "Health", is_essential: false, is_extraordinary: false, color: "#8c7aa9" },
+  "Bills & utilities": { life_area: "Home", is_essential: true, is_extraordinary: false, color: "#557a95" },
   Car: { life_area: "Mobility", is_essential: true, is_extraordinary: false, color: "#48605a" },
   "Car rental": { life_area: "Mobility", is_essential: false, is_extraordinary: true, color: "#4f7f8f" },
   "Car repairs": { life_area: "Mobility", is_essential: true, is_extraordinary: false, color: "#6a7f4f" },

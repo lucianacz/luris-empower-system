@@ -11,7 +11,7 @@ export function TransactionLedger({ workspace, mutate, selection, clearSelection
   const [kind, setKind] = useState("all");
   const [category, setCategory] = useState("all");
   const [month, setMonth] = useState("all");
-  const [status, setStatus] = useState("all");
+  const [status, setStatus] = useState("posted");
   const [scope, setScope] = useState("all");
   const selectedIds = useMemo(() => selection ? new Set(selection.transactionIds) : null, [selection]);
   const months = useMemo(() => [...new Set(workspace.transactions.map((transaction) => transaction.occurred_at.slice(0, 7)))].sort().reverse(), [workspace.transactions]);
@@ -52,7 +52,7 @@ export function TransactionLedger({ workspace, mutate, selection, clearSelection
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">Transaction evidence</p>
           <h2 className="mt-1 text-lg font-semibold">{selection?.title ?? "All imported transactions"}</h2>
-          <p className="mt-1 text-xs text-[var(--muted)]">{selection ? selection.range.from + " to " + selection.range.to + " · exact transaction IDs from the selected total" : "No reporting filter is active. Every previously imported transaction is available."}</p>
+          <p className="mt-1 text-xs text-[var(--muted)]">{selection ? selection.range.from + " to " + selection.range.to + " · exact transaction IDs from the selected total" : "Posted transactions are shown by default. Rejected and reversed audit rows remain available under All statuses."}</p>
         </div>
         {selection ? <button onClick={clearSelection} className="inline-flex items-center gap-2 rounded-xl border border-[var(--line)] px-3 py-2 text-xs font-semibold"><X aria-hidden="true" className="size-3.5" />Show all transactions</button> : null}
       </div>
@@ -63,7 +63,7 @@ export function TransactionLedger({ workspace, mutate, selection, clearSelection
         <FilterSelect label="Month" value={month} onChange={setMonth} options={[["all", "All months"], ...months.map((value) => [value, value] as [string, string])]} />
         <FilterSelect label="Status" value={status} onChange={setStatus} options={[["all", "All statuses"], ["posted", "Posted"], ["failed", "Rejected"], ["reversed", "Reversed"], ["pending", "Pending"]]} />
       </div>
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-3"><FilterSelect label="Personal / shared" value={scope} onChange={setScope} options={[["all", "Personal and shared"], ["personal", "Personal"], ["shared", "Shared"]]} compact /><div className="flex items-center gap-3"><span className="text-sm text-[var(--muted)]">{rows.length} of {workspace.transactions.length}</span><button type="button" onClick={() => { setSearch(""); setKind("all"); setCategory("all"); setMonth("all"); setStatus("all"); setScope("all"); }} className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-semibold text-[var(--forest)]"><X aria-hidden="true" className="size-3.5" />Clear filters</button></div></div>
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-3"><FilterSelect label="Personal / shared" value={scope} onChange={setScope} options={[["all", "Personal and shared"], ["personal", "Personal"], ["shared", "Shared"]]} compact /><div className="flex items-center gap-3"><span className="text-sm text-[var(--muted)]">{rows.length} of {workspace.transactions.length}</span><button type="button" onClick={() => { setSearch(""); setKind("all"); setCategory("all"); setMonth("all"); setStatus("posted"); setScope("all"); }} className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-semibold text-[var(--forest)]"><X aria-hidden="true" className="size-3.5" />Clear filters</button></div></div>
     </div>
 
     <div className="overflow-x-auto rounded-[20px] border border-[var(--line)] bg-[var(--surface)]">

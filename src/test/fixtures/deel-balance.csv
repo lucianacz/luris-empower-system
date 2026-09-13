@@ -1,5 +1,5 @@
 ID,Date Requested,Transaction Status,Transaction Type,Currency,Transaction Amount,Provider Fee,Amount Transferred,Currency Transferred,Client,Contract Name,Contract URL,Invoice URL,Withdraw Method,Withdraw Method Custom Name,Withdraw Account Holder Name,Trace ID,Trace ID Type,Transaction Statement URL,Exchange Rate Fees,Exchange Rate,Cross Border Fees,Provider Fees
 txn_income,2026-08-01 10:00:00,completed,client_payment,USD,6000.00,,,,Example Studio,Design services,,,,,,,,,,,0,0
-txn_transfer,2026-08-04 10:00:00,completed,withdrawal,USD,-1300.00,0,1290.25,USD,,,,,dolarapp,ARQ wallet,Account holder,trace-1,provider,,9.75,1,0,0
-txn_failed,2026-08-08 10:00:00,failure,withdrawal,USD,-500.00,0,496.25,USD,,,,,dolarapp,ARQ wallet,Account holder,trace-2,provider,,3.75,1,0,0
+txn_transfer,2026-08-04 10:00:00,completed,withdrawal,USD,-1300.00,9.75,1290.25,USD,,,,,dolarapp,ARQ wallet,Account holder,trace-1,provider,,0,1,0,9.75
+txn_failed,2026-08-08 10:00:00,failure,withdrawal,USD,-500.00,3.75,496.25,USD,,,,,dolarapp,ARQ wallet,Account holder,trace-2,provider,,0,1,0,3.75
 txn_card_funding,2026-08-09 10:00:00,completed,withdrawal,USD,-500.00,,,USD,,,,,deel_card,,,,,https://example.com/statement,0,,0,0

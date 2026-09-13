@@ -188,7 +188,7 @@ export async function POST(request: Request) {
       }
       const insertedByFingerprint = new Map((inserted ?? []).map((item) => [item.fingerprint, item.id]));
       await persistArqConversionRates(supabase, user.id, accepted);
-      const questions = accepted.flatMap((transaction) => transaction.warnings.length || transaction.kind === "unknown" ? [{
+      const questions = accepted.flatMap((transaction) => transaction.status === "posted" && Number(transaction.amount) !== 0 && (transaction.warnings.length || transaction.kind === "unknown") ? [{
         user_id: user.id,
         transaction_id: insertedByFingerprint.get(transaction.fingerprint) ?? null,
         import_batch_id: batchId,
