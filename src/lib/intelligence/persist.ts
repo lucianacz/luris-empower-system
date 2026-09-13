@@ -154,6 +154,11 @@ async function applyKnownMerchantRules(supabase: SupabaseClient, userId: string,
 async function applySpecificCategoryRefinements(supabase: SupabaseClient, userId: string, transactions: WorkspaceTransaction[], categoryIds: Map<string, string>) {
   const refinements = [
     { categoryName: "Hotels", pattern: /hotel|hostel|booking(?:\.com|\.[a-z])?|lodging|accommodation/i, fromCategories: new Set(["Travel", "Hotels"]) },
+    { categoryName: "Car rental", pattern: /car rental|alquiler de auto|\benterprise\b|rent[ -]?a[ -]?car/i, fromCategories: new Set(["Travel", "Transport", "Car rental"]) },
+    { categoryName: "Car repairs", pattern: /car repair|reparaci[oó]n.*(?:auto|carro)|mec[aá]nic|neum[aá]tic|la casa del hyundai|centro llantero del sur/i, fromCategories: new Set(["Transport", "Car repairs"]) },
+    { categoryName: "Fuel & gas", pattern: /fuel|gasolin|combustible|servicentro|gas station|lumicentro|terpel|racetrac/i, fromCategories: new Set(["Transport", "Fuel & gas"]) },
+    { categoryName: "Parking", pattern: /parking|estacionamiento/i, fromCategories: new Set(["Transport", "Parking"]) },
+    { categoryName: "Tolls & highways", pattern: /\bausol\b|toll|peaje|autopista|ruta 27/i, fromCategories: new Set(["Transport", "Tolls & highways"]) },
   ];
   for (const refinement of refinements) {
     const categoryId = categoryIds.get(refinement.categoryName);
@@ -184,13 +189,14 @@ function categoryFor(name: string): WorkspaceTransaction["category"] {
 
 const defaultCategoryDetails: Record<string, Omit<NonNullable<WorkspaceTransaction["category"]>, "name">> = {
   "Alternative therapy": { life_area: "Health", is_essential: false, is_extraordinary: false, color: "#8c7aa9" },
-  "Car rental": { life_area: "Travel", is_essential: false, is_extraordinary: true, color: "#4f7f8f" },
+  Car: { life_area: "Mobility", is_essential: true, is_extraordinary: false, color: "#48605a" },
+  "Car rental": { life_area: "Mobility", is_essential: false, is_extraordinary: true, color: "#4f7f8f" },
   "Car repairs": { life_area: "Mobility", is_essential: true, is_extraordinary: false, color: "#6a7f4f" },
   Cleaning: { life_area: "Home", is_essential: true, is_extraordinary: false, color: "#8a806f" },
   Dentist: { life_area: "Health", is_essential: true, is_extraordinary: false, color: "#4f8c80" },
   Dermatology: { life_area: "Health", is_essential: true, is_extraordinary: false, color: "#357d8a" },
   "Dining out": { life_area: "Food", is_essential: false, is_extraordinary: false, color: "#d37a3d" },
-  "Diving & activities": { life_area: "Leisure", is_essential: false, is_extraordinary: false, color: "#167b91" },
+  "Diving & activities": { life_area: "Travel", is_essential: false, is_extraordinary: false, color: "#167b91" },
   "English classes": { life_area: "Growth", is_essential: false, is_extraordinary: false, color: "#7b8b65" },
   Groceries: { life_area: "Food", is_essential: true, is_extraordinary: false, color: "#52796f" },
   "Fuel & gas": { life_area: "Mobility", is_essential: true, is_extraordinary: false, color: "#b56b36" },
@@ -198,6 +204,7 @@ const defaultCategoryDetails: Record<string, Omit<NonNullable<WorkspaceTransacti
   Hotels: { life_area: "Travel", is_essential: false, is_extraordinary: true, color: "#7b6fa8" },
   Housing: { life_area: "Home", is_essential: true, is_extraordinary: false, color: "#7a6c5d" },
   "Personal care": { life_area: "Lifestyle", is_essential: false, is_extraordinary: false, color: "#b07d8b" },
+  Parking: { life_area: "Mobility", is_essential: true, is_extraordinary: false, color: "#65766f" },
   Pharmacy: { life_area: "Health", is_essential: true, is_extraordinary: false, color: "#6f9d84" },
   Therapy: { life_area: "Health", is_essential: true, is_extraordinary: false, color: "#568b82" },
   Transport: { life_area: "Mobility", is_essential: true, is_extraordinary: false, color: "#496f5d" },

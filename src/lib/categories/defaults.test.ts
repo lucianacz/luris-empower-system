@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { matchKnownMerchant, resolvedKnownMerchantKind } from "./known-merchants";
-import { suggestDefaultCategory } from "./defaults";
+import { defaultExpenseCategories, suggestDefaultCategory } from "./defaults";
 
 const classify = (description: string, mccLabel: string | null = null, kind = "expense") => suggestDefaultCategory({ kind: kind as "expense", description, metadata: { mccLabel }, amount: "-10", currency: "USD" });
 
@@ -30,6 +30,7 @@ describe("default expense categories", () => {
     expect(classify("BKG*HOTEL AT BOOKING.C")).toBe("Hotels");
     expect(classify("MINISUPER WILLY WILLYS")).toBe("Groceries");
     expect(classify("SERVICENTRO EL CONEJO")).toBe("Fuel & gas");
+    expect(classify("PARKING GARAGE")).toBe("Parking");
     expect(classify("ANIBAL MARCOS PAZ")).toBe("Diving & activities");
     expect(classify("Martin Ackerman")).toBe("Friends & social");
     expect(classify("CAROLINA AFERGAN")).toBe("Friends & social");
@@ -41,6 +42,18 @@ describe("default expense categories", () => {
     expect(matchKnownMerchant("APPLE.COM/BILL", { amount: "-9.49", currency: "USD" })?.displayName).toBe("YouTube (via Apple)");
     expect(matchKnownMerchant("APPLE.COM/BILL", { amount: "-0.99", currency: "USD" })?.displayName).toBe("iCloud (via Apple)");
     expect(matchKnownMerchant("APPLE.COM/BILL", { amount: "-12.99", currency: "USD" })).toBeNull();
+  });
+
+  it("keeps the confirmed expense hierarchy explicit", () => {
+    const parentOf = (name: string) => defaultExpenseCategories.find((category) => category.name === name)?.parentName ?? null;
+    expect(parentOf("Car rental")).toBe("Car");
+    expect(parentOf("Car repairs")).toBe("Car");
+    expect(parentOf("Cleaning")).toBe("Housing");
+    expect(parentOf("Dentist")).toBe("Health");
+    expect(parentOf("Diving & activities")).toBe("Travel");
+    expect(parentOf("Therapy")).toBeNull();
+    expect(parentOf("Workshops & classes")).toBe("Education");
+    expect(defaultExpenseCategories.some((category) => category.name === "Pets")).toBe(false);
   });
 
   it("turns negative known-provider transfers into spending but preserves positive refunds", () => {

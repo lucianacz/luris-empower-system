@@ -18,15 +18,16 @@ export const defaultExpenseCategories: DefaultExpenseCategory[] = [
   { name: "Groceries", lifeArea: "Food", essential: true, color: "#52796f", pattern: /grocery|groceries|supermarket|supermercado|\bmini\s*super\b|\bminisuper\b|\bmega\s*super\b|\bsuper\b|market|mercado|verduler|carnicer|bakery|panader|almac[eé]n|convenience|7-eleven|seven-eleven|city\s*mall|golden\s*mall|daily\s*mart|bm\s+rio\s+claro|lawson|whole foods|walmart/i },
   { name: "Dining out", lifeArea: "Food", essential: false, color: "#d37a3d", pattern: /restaurant|dining|fast food|caf[eé]|coffee|bar\b|sushi|rappi|uber eats|delivery|mcdonald|starbucks|helader/i },
   { name: "Friends & social", parentName: "Dining out", lifeArea: "Relationships", essential: false, color: "#c65f7c", pattern: /friends?\s*(?:and|&)?\s*social|salidas? con amigos/i },
+  { name: "Car", lifeArea: "Mobility", essential: true, color: "#48605a", pattern: /car ownership|gastos? del (?:auto|carro)/i },
   { name: "Housing", lifeArea: "Home", essential: true, color: "#7a6c5d", pattern: /\brent\b|alquiler|expensas|condominio|property management/i },
   { name: "Bills & utilities", lifeArea: "Home", essential: true, color: "#557a95", pattern: /electric|electricidad|internet|telecom|telephone|tel[eé]fono|mobile|water bill|agua\b|gas bill|utility|utilities/i },
-  { name: "Transport", lifeArea: "Mobility", essential: true, color: "#496f5d", pattern: /taxi|rideshare|\buber\b|\bgrab\b|\bdidi\b|cabify|subway|metro\b|\bmtr\b|train|bus\b|tap to ride|transporte|parking|estacionamiento|fuel|gasolin|combustible|servicentro|terpel|racetrac/i },
+  { name: "Transport", lifeArea: "Mobility", essential: true, color: "#496f5d", pattern: /taxi|rideshare|\buber\b|\bgrab\b|\bdidi\b|cabify|subway|metro\b|\bmtr\b|train|bus\b|tap to ride|transporte/i },
   { name: "Flights", parentName: "Travel", lifeArea: "Travel", essential: false, extraordinary: true, color: "#416788", pattern: /airline|aeroline|avianca|latam|lan airline|copa air|vivaaerobus|sansa|air transport/i },
   { name: "Hotels", parentName: "Travel", lifeArea: "Travel", essential: false, extraordinary: true, color: "#7b6fa8", pattern: /hotel|hostel|booking(?:\.com|\.[a-z])?|lodging|accommodation/i },
-  { name: "Car rental", parentName: "Travel", lifeArea: "Travel", essential: false, extraordinary: true, color: "#4f7f8f", pattern: /car rental|alquiler de auto|\benterprise\b|rent[ -]?a[ -]?car/i },
+  { name: "Car rental", parentName: "Car", lifeArea: "Mobility", essential: false, extraordinary: true, color: "#4f7f8f", pattern: /car rental|alquiler de auto|\benterprise\b|rent[ -]?a[ -]?car/i },
   { name: "Travel", lifeArea: "Travel", essential: false, extraordinary: true, color: "#4d7298", pattern: /hotel|hostel|booking\.com|airbnb|travel|tour|car rental|alquiler de auto|airalo|\besim\b|immigration|\bvisa\b/i },
   { name: "Health insurance", parentName: "Health", lifeArea: "Health", essential: true, color: "#326a60", pattern: /hospital\s*alem[aá]n|hospitalaleman|health insurance|seguro (?:m[eé]dico|de salud)|obra social/i },
-  { name: "Therapy", parentName: "Health", lifeArea: "Health", essential: true, color: "#568b82", pattern: /psycholog|psic[oó]log|therapy|terapia/i },
+  { name: "Therapy", lifeArea: "Health", essential: true, color: "#568b82", pattern: /psycholog|psic[oó]log|therapy|terapia/i },
   { name: "Dentist", parentName: "Health", lifeArea: "Health", essential: true, color: "#4f8c80", pattern: /dentist|dental|odont[oó]log/i },
   { name: "Pharmacy", parentName: "Health", lifeArea: "Health", essential: true, color: "#6f9d84", pattern: /pharmacy|farmacia|farmacity/i },
   { name: "Alternative therapy", parentName: "Health", lifeArea: "Health", essential: false, color: "#8c7aa9", pattern: /biodecodific|biodecoder/i },
@@ -38,16 +39,18 @@ export const defaultExpenseCategories: DefaultExpenseCategory[] = [
   { name: "Education", lifeArea: "Growth", essential: false, color: "#657153", pattern: /course|school|university|college|education|academy|bookstore|libro|udemy|coursera|preply/i },
   { name: "English classes", parentName: "Education", lifeArea: "Growth", essential: false, color: "#7b8b65", pattern: /english class|clases? de ingl[eé]s/i },
   { name: "Cleaning", parentName: "Housing", lifeArea: "Home", essential: true, color: "#8a806f", pattern: /cleaning|limpieza/i },
-  { name: "Car repairs", parentName: "Transport", lifeArea: "Mobility", essential: true, color: "#6a7f4f", pattern: /car repair|reparaci[oó]n.*(?:auto|carro)|mec[aá]nic|neum[aá]tic|la casa del hyundai|centro llantero del sur/i },
-  { name: "Fuel & gas", parentName: "Transport", lifeArea: "Mobility", essential: true, color: "#b56b36", pattern: /fuel|gasolin|combustible|servicentro|gas station|lumicentro/i },
-  { name: "Tolls & highways", parentName: "Transport", lifeArea: "Mobility", essential: true, color: "#7a7542", pattern: /\bausol\b|toll|peaje|autopista|ruta 27/i },
+  { name: "Car repairs", parentName: "Car", lifeArea: "Mobility", essential: true, color: "#6a7f4f", pattern: /car repair|reparaci[oó]n.*(?:auto|carro)|mec[aá]nic|neum[aá]tic|la casa del hyundai|centro llantero del sur/i },
+  { name: "Fuel & gas", parentName: "Car", lifeArea: "Mobility", essential: true, color: "#b56b36", pattern: /fuel|gasolin|combustible|servicentro|gas station|lumicentro|terpel|racetrac/i },
+  { name: "Parking", parentName: "Car", lifeArea: "Mobility", essential: true, color: "#65766f", pattern: /parking|estacionamiento/i },
+  { name: "Tolls & highways", parentName: "Car", lifeArea: "Mobility", essential: true, color: "#7a7542", pattern: /\bausol\b|toll|peaje|autopista|ruta 27/i },
   { name: "Dermatology", parentName: "Health", lifeArea: "Health", essential: true, color: "#357d8a", pattern: /dermatolog|skin medical/i },
-  { name: "Diving & activities", parentName: "Entertainment", lifeArea: "Leisure", essential: false, color: "#167b91", pattern: /diving|buceo|scuba|surfboard|water activit/i },
+  { name: "Diving & activities", parentName: "Travel", lifeArea: "Travel", essential: false, color: "#167b91", pattern: /diving|buceo|scuba|surfboard|water activit/i },
   { name: "Workshops & classes", parentName: "Education", lifeArea: "Growth", essential: false, color: "#9a6b52", pattern: /workshop|taller|class|clase/i },
   { name: "Work tests", lifeArea: "Work", essential: false, color: "#6f7782", pattern: /shopify work test|sweet[ -]?chemistry/i },
-  { name: "Pets", lifeArea: "Home", essential: true, color: "#907761", pattern: /veterinar|pet shop|pet store|mascota/i },
   { name: "Gifts & giving", lifeArea: "Relationships", essential: false, color: "#a66b6b", pattern: /gift|regalo|donation|donaci[oó]n|charity/i },
 ];
+
+const archivedDefaultCategoryNames = ["Pets"];
 
 export function suggestDefaultCategory(transaction: Pick<NormalizedTransaction, "kind" | "description" | "metadata" | "amount" | "currency">) {
   if (!["expense", "refund", "fee", "tax"].includes(transaction.kind)) return null;
@@ -60,7 +63,7 @@ export function suggestDefaultCategory(transaction: Pick<NormalizedTransaction, 
 }
 
 export async function ensureDefaultCategories(supabase: SupabaseClient, userId: string) {
-  const { data: existing, error } = await supabase.from("categories").select("id,name,parent_id").eq("user_id", userId).eq("kind", "expense");
+  const { data: existing, error } = await supabase.from("categories").select("id,name,parent_id,is_archived").eq("user_id", userId).eq("kind", "expense");
   if (error) throw error;
   const existingNames = new Set((existing ?? []).map((category) => category.name));
   const missingParents = defaultExpenseCategories.filter((category) => !category.parentName && !existingNames.has(category.name));
@@ -76,7 +79,40 @@ export async function ensureDefaultCategories(supabase: SupabaseClient, userId: 
     const { error: insertError } = await supabase.from("categories").insert(missingChildren.map((category) => ({ ...categoryRow(category), parent_id: parentIds.get(category.parentName!) ?? null })));
     if (insertError) throw insertError;
   }
-  const { data, error: reloadError } = await supabase.from("categories").select("id,name").eq("user_id", userId).eq("kind", "expense");
+  const { data: allDefaults, error: allDefaultsError } = await supabase.from("categories").select("id,name,parent_id,is_archived").eq("user_id", userId).eq("kind", "expense");
+  if (allDefaultsError) throw allDefaultsError;
+  const rowsByName = new Map((allDefaults ?? []).map((category) => [category.name, category]));
+  const idsByName = new Map((allDefaults ?? []).map((category) => [category.name, category.id]));
+  const hierarchyUpdates = new Map<string, string[]>();
+  for (const category of defaultExpenseCategories) {
+    const row = rowsByName.get(category.name);
+    if (!row) continue;
+    const parentId = category.parentName ? idsByName.get(category.parentName) ?? null : null;
+    if (row.parent_id === parentId && !row.is_archived) continue;
+    const key = parentId ?? "root";
+    hierarchyUpdates.set(key, [...(hierarchyUpdates.get(key) ?? []), row.id]);
+  }
+  for (const [key, ids] of hierarchyUpdates) {
+    const { error: updateError } = await supabase.from("categories").update({ parent_id: key === "root" ? null : key, is_archived: false }).eq("user_id", userId).in("id", ids);
+    if (updateError) throw updateError;
+  }
+  const metadataUpdates = new Map<string, { values: { life_area: string; is_essential: boolean; is_extraordinary: boolean }; ids: string[] }>();
+  for (const category of defaultExpenseCategories) {
+    const row = rowsByName.get(category.name);
+    if (!row) continue;
+    const values = { life_area: category.lifeArea, is_essential: category.essential, is_extraordinary: category.extraordinary ?? false };
+    const key = JSON.stringify(values);
+    const group = metadataUpdates.get(key) ?? { values, ids: [] };
+    group.ids.push(row.id);
+    metadataUpdates.set(key, group);
+  }
+  for (const { values, ids } of metadataUpdates.values()) {
+    const { error: metadataError } = await supabase.from("categories").update(values).eq("user_id", userId).in("id", ids);
+    if (metadataError) throw metadataError;
+  }
+  const { error: archiveError } = await supabase.from("categories").update({ is_archived: true }).eq("user_id", userId).eq("kind", "expense").in("name", archivedDefaultCategoryNames);
+  if (archiveError) throw archiveError;
+  const { data, error: reloadError } = await supabase.from("categories").select("id,name").eq("user_id", userId).eq("kind", "expense").eq("is_archived", false);
   if (reloadError) throw reloadError;
   return new Map((data ?? []).map((category) => [category.name, category.id]));
 

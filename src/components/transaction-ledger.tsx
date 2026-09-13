@@ -3,6 +3,7 @@
 import { Search, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { FinanceMutate, TransactionSelection } from "@/components/finance-ui-types";
+import { categoryOptions } from "@/lib/categories/hierarchy";
 import type { WorkspaceData, WorkspaceTransaction } from "@/lib/workspace/demo";
 
 export function TransactionLedger({ workspace, mutate, selection, clearSelection }: { workspace: WorkspaceData; mutate: FinanceMutate; selection: TransactionSelection | null; clearSelection: () => void }) {
@@ -14,6 +15,7 @@ export function TransactionLedger({ workspace, mutate, selection, clearSelection
   const [scope, setScope] = useState("all");
   const selectedIds = useMemo(() => selection ? new Set(selection.transactionIds) : null, [selection]);
   const months = useMemo(() => [...new Set(workspace.transactions.map((transaction) => transaction.occurred_at.slice(0, 7)))].sort().reverse(), [workspace.transactions]);
+  const expenseCategoryOptions = useMemo(() => categoryOptions(workspace.categories, "expense"), [workspace.categories]);
   const rows = useMemo(() => workspace.transactions.filter((transaction) => {
     if (selectedIds && !selectedIds.has(transaction.id)) return false;
     if (kind !== "all" && transaction.kind !== kind) return false;
@@ -57,7 +59,7 @@ export function TransactionLedger({ workspace, mutate, selection, clearSelection
       <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-6">
         <label className="md:col-span-2 xl:col-span-2"><span className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)]">Search transactions</span><span className="relative block"><Search aria-hidden="true" className="absolute left-3 top-3 size-4 text-[var(--muted)]" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Merchant, description, or account" className="h-10 w-full rounded-xl border border-[var(--line)] bg-white pl-9 pr-3 text-sm" /></span></label>
         <FilterSelect label="Treatment" value={kind} onChange={setKind} options={[["all", "All treatments"], ["expense", "Expense"], ["refund", "Refund"], ["fee", "Fee"], ["tax", "Tax"], ["cash_withdrawal", "Cash withdrawal"], ["transfer", "Transfer"], ["income", "Income"], ["unknown", "Needs review"]]} />
-        <FilterSelect label="Category" value={category} onChange={setCategory} options={[["all", "All categories"], ["uncategorized", "Uncategorized"], ...workspace.categories.map((item) => [item.id, item.name] as [string, string])]} />
+        <FilterSelect label="Category" value={category} onChange={setCategory} options={[["all", "All categories"], ["uncategorized", "Uncategorized"], ...expenseCategoryOptions.map((item) => [item.category.id, item.label] as [string, string])]} />
         <FilterSelect label="Month" value={month} onChange={setMonth} options={[["all", "All months"], ...months.map((value) => [value, value] as [string, string])]} />
         <FilterSelect label="Status" value={status} onChange={setStatus} options={[["all", "All statuses"], ["posted", "Posted"], ["failed", "Rejected"], ["reversed", "Reversed"], ["pending", "Pending"]]} />
       </div>
@@ -68,7 +70,7 @@ export function TransactionLedger({ workspace, mutate, selection, clearSelection
       <table className="w-full min-w-[1280px] text-left text-sm">
         <thead className="bg-[var(--paper)] text-[11px] uppercase tracking-[0.08em] text-[var(--muted)]"><tr><th className="px-4 py-3">Payment date</th><th className="px-4 py-3">Merchant or description</th><th className="px-4 py-3">Category</th><th className="px-4 py-3">Location</th><th className="px-4 py-3">Original amount</th><th className="px-4 py-3">USD reporting value</th><th className="px-4 py-3">Service month</th><th className="px-4 py-3">Personal/shared</th></tr></thead>
         <tbody className="divide-y divide-[var(--line)]">
-          {rows.map((transaction) => <TransactionRow key={transaction.id} transaction={transaction} workspace={workspace} live={live} saveCategory={saveCategory} saveSplit={saveSplit} />)}
+          {rows.map((transaction) => <TransactionRow key={transaction.id} transaction={transaction} categoryOptions={expenseCategoryOptions} live={live} saveCategory={saveCategory} saveSplit={saveSplit} />)}
           {!rows.length ? <tr><td colSpan={8} className="p-8 text-center text-sm text-[var(--muted)]">No transactions match this evidence filter.</td></tr> : null}
         </tbody>
       </table>
@@ -76,7 +78,7 @@ export function TransactionLedger({ workspace, mutate, selection, clearSelection
   </section>;
 }
 
-function TransactionRow({ transaction, workspace, live, saveCategory, saveSplit }: { transaction: WorkspaceTransaction; workspace: WorkspaceData; live: boolean; saveCategory: (id: string, categoryId: string) => Promise<void>; saveSplit: (id: string, shared: boolean) => Promise<void> }) {
+function TransactionRow({ transaction, categoryOptions: options, live, saveCategory, saveSplit }: { transaction: WorkspaceTransaction; categoryOptions: ReturnType<typeof categoryOptions>; live: boolean; saveCategory: (id: string, categoryId: string) => Promise<void>; saveSplit: (id: string, shared: boolean) => Promise<void> }) {
   const duplicate = transaction.metadata?.isDuplicate === true;
   const crossedOut = Number(transaction.amount) === 0 || ["failed", "reversed"].includes(transaction.status);
   const reportingAmount = duplicate || crossedOut ? null : transaction.currency === "USD" ? Number(transaction.amount) : transaction.reporting_value ? Number(transaction.reporting_value.reporting_amount) : null;
@@ -94,7 +96,7 @@ function TransactionRow({ transaction, workspace, live, saveCategory, saveSplit 
       {duplicate ? <span className="mt-1 ml-1 inline-block rounded-full bg-[var(--paper-deep)] px-2 py-0.5 text-[10px]">Duplicate copy</span> : null}
       {transaction.reimbursement_status && transaction.reimbursement_status !== "none" ? <span className="mt-1 ml-1 inline-block rounded-full bg-[var(--amber-soft)] px-2 py-0.5 text-[10px]">Reimbursement {transaction.reimbursement_status}</span> : null}
     </td>
-    <td className="px-4 py-3"><select aria-label={"Category for " + transaction.description} disabled={!live} value={transaction.category_id ?? ""} onChange={(event) => void saveCategory(transaction.id, event.target.value)} className="h-9 max-w-44 rounded-lg border border-[var(--line)] bg-white px-2 text-xs"><option value="">Uncategorized</option>{workspace.categories.filter((item) => item.kind === "expense").map((item) => <option key={item.id} value={item.id}>{item.parent_id ? "↳ " : ""}{item.name}</option>)}</select></td>
+    <td className="px-4 py-3"><select aria-label={"Category for " + transaction.description} disabled={!live} value={transaction.category_id ?? ""} onChange={(event) => void saveCategory(transaction.id, event.target.value)} className="h-9 max-w-52 rounded-lg border border-[var(--line)] bg-white px-2 text-xs"><option value="">Uncategorized</option>{options.map((item) => <option key={item.category.id} value={item.category.id}>{item.label}</option>)}</select></td>
     <td className="px-4 py-3"><span className="block text-xs font-medium">{transaction.location_period?.location.country_name || transaction.merchant_country || "Not confirmed"}</span><span className="mt-1 block text-[10px] text-[var(--muted)]">{transaction.merchant_city || transaction.location_period?.period_type.replaceAll("_", " ") || "No location period"}</span></td>
     <td className={"whitespace-nowrap px-4 py-3 font-mono text-xs" + crossedClass}>{money(originalAmount.amount, originalAmount.currency)}</td>
     <td className="px-4 py-3"><span className={"block whitespace-nowrap font-mono text-xs" + crossedClass}>{reportingAmount == null ? "Not included" : money(reportingAmount, "USD")}</span><span className="mt-1 block max-w-48 text-[10px] leading-4 text-[var(--muted)]">{source}{transaction.reporting_value ? " · rate " + transaction.reporting_value.rate_to_reporting : ""}</span></td>

@@ -105,6 +105,7 @@ export function normalizeUserCountryHint(value: unknown): string | null {
 
 export function isEverydayVariableCategory(categoryName: string | null | undefined): boolean {
   return [
+    "Car",
     "Car rental",
     "Car repairs",
     "Dining out",
@@ -117,6 +118,7 @@ export function isEverydayVariableCategory(categoryName: string | null | undefin
     "Fuel & gas",
     "Friends & social",
     "Personal care",
+    "Parking",
     "Pharmacy",
     "Shopping",
     "Transport",
