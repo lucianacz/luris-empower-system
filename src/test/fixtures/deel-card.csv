@@ -1,0 +1,4 @@
+originalCurrency,originalAmount,USDAmount,date,mcc,accountAmount,accountCurrency,exchangeFeeAccountAmount,merchantName,merchantCountry,status,declineReason,authCode,type,externalTxId,externalRootTxId,apiTransaction,mccLabel,exchangeRate,last4,MCC Label
+CRC,12000.0000,23.41,2026-08-09T01:14:52.472Z,5411,-23.4100,USD,0.3000,Neighborhood Market,CR,APPROVED,,A1,POS_TX,card-1,root-1,false,Grocery Stores,512.60,4242,Groceries
+USD,10.0000,10.00,2026-08-10T01:14:52.472Z,5812,10.0000,USD,0,Restaurant Refund,US,APPROVED,,A2,REFUND,card-2,root-2,false,Restaurants,1,4242,Dining
+USD,40.0000,40.00,2026-08-11T01:14:52.472Z,5812,0.0000,USD,0,Declined Restaurant,US,DECLINED,Insufficient funds,A3,POS_TX,card-3,root-3,false,Restaurants,1,4242,Dining

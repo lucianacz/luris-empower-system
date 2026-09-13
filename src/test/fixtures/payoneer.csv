@@ -1,0 +1,5 @@
+Date,Description,Amount,Currency,Status,Transaction ID  
+"17 Aug, 2026",Card charge (EXAMPLE MARKET),-24.50,USD,Completed,pay-1
+"16 Aug, 2026",Payment from Example Client,850.00,USD,Completed,pay-2
+"15 Aug, 2026",ATM withdrawal,-100.00,USD,Completed,pay-3
+"14 Aug, 2026",Maintenance fee,-3.00,USD,Canceled,pay-4

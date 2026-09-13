@@ -1,0 +1,8 @@
+ARS Estado de Cuenta
+Fecha de inicio 1 August 2026
+Detalle de Transacciones
+Fecha Tipo Monto Moneda Descripción
+Aug 04 ARS Recibidos + 120,000 ARS Recibido de DolarApp Mexico
+Aug 05 Retiros - 120,000 ARS Account holder
+Aug 06 Pago QR - 12,345.67 ARS Example Telecom
+Aug 07 Recargas + 5,000 ARS Example Person

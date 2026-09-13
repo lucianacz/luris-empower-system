@@ -1,0 +1,5 @@
+brubank
+Movimientos
+Fecha #Ref Descripción Débito Crédito Saldo
+02-01-25 1058513109 Example Market $ 21.991,60 - $ 50.551,77
+02-01-25 1058722686 Account holder - $ 71.280,00 $ 121.831,77
