@@ -63,6 +63,13 @@ describe("recurring expense intelligence", () => {
     expect(result.questions.some((question) => /casa costa rica|cara goldberg/i.test(question.prompt))).toBe(false);
   });
 
+  it("honors a confirmed weekly therapy schedule with a short imported history", () => {
+    const therapyCategory = { name: "Therapy", life_area: "Health", is_essential: true, color: "#568b82" };
+    const rows = ["2025-12-23", "2025-12-29", "2026-01-05", "2026-01-12", "2026-01-19", "2026-01-26"].map((date, index) => knownPayment(`therapy-${index}`, date, "-30", "DANIEL JESICA SOLANGE", "Daniel Jesica Solange", "daniel jesica solange", therapyCategory));
+    const result = analyzeRecurring(rows, "2026-09-13");
+    expect(result.patterns[0]).toMatchObject({ providerName: "Daniel Jesica Solange", frequency: "weekly", status: "active", isSubscription: false });
+  });
+
   it("recognizes confirmed Google One and ChatGPT billing schedules", () => {
     const google = { ...payment("google", "2026-04-01", "-99.99"), description: "Google One", merchant_name: "Google One", merchant_key: "google one", currency: "USD", category_id: "subscriptions", category: { name: "Subscriptions & software", life_area: "Digital", is_essential: false, color: "#6c63a8" } };
     const chatgpt = ["2026-06-14", "2026-07-14", "2026-08-14"].map((date, index) => ({ ...google, id: `chatgpt-${index}`, occurred_at: `${date}T00:00:00Z`, amount: "-100", description: "OPENAI *CHATGPT SUBSCR", merchant_name: "ChatGPT", merchant_key: "chatgpt" }));

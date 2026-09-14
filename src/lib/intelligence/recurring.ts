@@ -70,7 +70,7 @@ export function analyzeRecurring(transactions: WorkspaceTransaction[], today: st
     const annual = known?.recurrenceHint === "annual" || rows.length >= 2 && medianGap >= 320 && medianGap <= 410;
     const weekly = rows.length >= 6 && distinctMonths >= 3 && medianGap >= 5 && medianGap <= 10;
     const monthly = explicitlyMonthly || known?.recurrenceHint === "monthly" || (distinctMonths >= 3 && looksMonthly(dates, gaps));
-    const frequency = annual ? "annual" : weekly || (known?.recurrenceHint === "weekly" && rows.length >= 6 && distinctMonths >= 3) ? "weekly" : monthly ? "monthly" : "uncertain";
+    const frequency = annual ? "annual" : weekly || (known?.recurrenceHint === "weekly" && rows.length >= 4) ? "weekly" : monthly ? "monthly" : "uncertain";
     if (frequency === "uncertain") continue;
     const amounts = sorted.map((row) => Math.abs(Number(row.amount)));
     const baselineRows = known?.confirmedPlanChangeOn

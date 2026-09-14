@@ -89,6 +89,7 @@ describe("default expense categories", () => {
     expect(resolvedKnownMerchantKind(psychologist, "60000", "refund")).toBe("refund");
     expect(resolvedKnownMerchantKind(matchKnownMerchant("Moved to DolarApp (ARQ)"), "-500", "unknown")).toBe("transfer");
     expect(resolvedKnownMerchantKind(matchKnownMerchant("Deel Balance"), "500", "unknown")).toBe("transfer");
+    expect(resolvedKnownMerchantKind(matchKnownMerchant("Payment from Deel"), "500", "income")).toBe("transfer");
     expect(matchKnownMerchant("Payment to Julian Aaron Stivelman", { amount: "-60000", currency: "USD" })?.categoryName).toBe("Satu Lagi Villa");
     expect(matchKnownMerchant("Payment to Julian Aaron Stivelman", { amount: "-79", currency: "USD" })?.categoryName).not.toBe("Satu Lagi Villa");
   });

@@ -25,15 +25,29 @@ export class PayoneerCsvAdapter implements ImportAdapter {
   }
 
   parse(input: AdapterInput): NormalizedTransaction[] {
+    const rowsBySourceId = new Map<string, Record<string, string>[]>();
+    for (const row of input.csvRows ?? []) {
+      const sourceId = (row["Transaction ID"] || row["Transaction ID  "] || "").trim();
+      if (sourceId) rowsBySourceId.set(sourceId, [...(rowsBySourceId.get(sourceId) ?? []), row]);
+    }
+    const reversedSourceIds = new Set([...rowsBySourceId].flatMap(([sourceId, rows]) => {
+      const amounts = rows.map((row) => parseAmount(row.Amount).toNumber());
+      const hasRefund = rows.some((row) => /\brefund\b|\breversal\b/i.test(row.Description || ""));
+      const balancesToZero = amounts.some((amount) => amount > 0) && amounts.some((amount) => amount < 0) && Math.abs(amounts.reduce((sum, amount) => sum + amount, 0)) < 0.0001;
+      return hasRefund && balancesToZero ? [sourceId] : [];
+    }));
     return (input.csvRows ?? []).flatMap((row) => {
       const occurredAt = parseDate(row.Date);
       if (!occurredAt) return [];
       const description = row.Description || "Payoneer transaction";
       const lower = description.toLowerCase();
-      const status = normalizeStatus(row.Status);
+      const sourceId = (row["Transaction ID"] || row["Transaction ID  "] || "").trim();
+      const status = reversedSourceIds.has(sourceId) ? "reversed" : normalizeStatus(row.Status);
       let kind: TransactionKind = "unknown";
       const warnings: string[] = [];
-      if (lower.startsWith("payment from")) kind = "income";
+      if (reversedSourceIds.has(sourceId)) kind = lower.includes("refund") ? "refund" : "expense";
+      else if (lower.startsWith("payment from")) kind = "income";
+      else if (lower.startsWith("payment refund")) kind = "refund";
       else if (lower.startsWith("card charge")) kind = "expense";
       else if (/annual account fee|maintenance fee/.test(lower)) kind = "fee";
       else if (lower.startsWith("atm")) {
@@ -42,7 +56,7 @@ export class PayoneerCsvAdapter implements ImportAdapter {
 
       return [createTransaction({
         provider: "payoneer",
-        sourceId: row["Transaction ID"] || row["Transaction ID  "] || null,
+        sourceId: sourceId || null,
         occurredAt,
         description,
         amount: parseAmount(row.Amount),

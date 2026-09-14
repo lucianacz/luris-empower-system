@@ -55,6 +55,14 @@ describe("provider adapters", () => {
     expect(transactions[3].status).toBe("failed");
   });
 
+  it("keeps a Payoneer payment/reversal audit pair without treating either as spending", () => {
+    const parsed = parseCsv(`Date,Description,Amount,Currency,Status,Transaction ID\n"22 Oct, 2025",Payment refund (Citi Bank),500.00,USD,Completed,902450276\n"20 Oct, 2025",Payment to Citi Bank,-500.00,USD,Completed,902450276`);
+    const transactions = new PayoneerCsvAdapter().parse({ fileName: "report.csv", format: "csv", headers: parsed.headers, csvRows: parsed.rows });
+    expect(transactions).toHaveLength(2);
+    expect(transactions.map((transaction) => transaction.status)).toEqual(["reversed", "reversed"]);
+    expect(transactions.every((transaction) => transaction.excludedFromTotals && transaction.warnings.length === 0)).toBe(true);
+  });
+
   it("normalizes Wise expenses, owned-account funding, fees, and cancelled rows", async () => {
     const parsed = parseCsv(await fixture("wise-transfer-history.csv"));
     const adapter = new WiseCsvAdapter();
