@@ -219,7 +219,7 @@ export function EmpowerDashboard() {
         {currentView === "property" ? <PropertyProject workspace={visibleWorkspace} profile={moneyView} openTransactions={openTransactions} /> : null}
         {currentView === "transactions" ? <><TransactionLedger workspace={transactionWorkspace} mutate={mutate} selection={selection} clearSelection={() => setSelection(null)} /><CategoryCreator disabled={workspace.mode !== "live"} mutate={mutate} /></> : null}
         {currentView === "questions" ? <QuestionsInbox workspace={visibleWorkspace} mutate={mutate} openTransactions={openTransactions} /> : null}
-        {currentView === "locations" ? <LocationsAndStays workspace={visibleWorkspace} personId={activeOwnerId} mutate={mutate} openTransactions={openTransactions} /> : null}
+        {currentView === "locations" ? <LocationsAndStays workspace={moneyView === "shared" ? systemWorkspace : visibleWorkspace} personId={activeOwnerId} sharedOverview={moneyView === "shared"} mutate={mutate} openTransactions={openTransactions} /> : null}
         {currentView === "recurring" ? <RecurringExpenses workspace={visibleWorkspace} mutate={mutate} openTransactions={openTransactions} /> : null}
         {currentView === "cash" ? <CashWithdrawals workspace={visibleWorkspace} openTransactions={openTransactions} /> : null}
         {currentView === "files" ? <FilesByMonth workspace={visibleWorkspace} /> : null}

@@ -12,6 +12,24 @@ export function isTripPeriod(period: WorkspaceLocationPeriod) {
   return period.status === "confirmed" && (period.period_type === "temporary_stay" || Boolean(period.trip_purpose));
 }
 
+export function groupEquivalentTripPeriods(periods: WorkspaceLocationPeriod[], combineProfiles: boolean) {
+  if (!combineProfiles) return periods.map((period) => [period]);
+  const groups = new Map<string, WorkspaceLocationPeriod[]>();
+  for (const period of periods) {
+    const purpose = period.trip_purpose?.toLowerCase() ?? "";
+    const explicitlyIndividual = /\bpersonal\b|\bsolo\b|\bwork\b/.test(purpose);
+    const ownerKey = explicitlyIndividual ? period.person_id || period.person?.id || period.person?.role || "individual" : "together";
+    const key = [period.location.country_code || period.location.country_name || period.location.name, period.starts_on, period.ends_on || "ongoing", ownerKey].join(":");
+    groups.set(key, [...(groups.get(key) ?? []), period]);
+  }
+  return [...groups.values()];
+}
+
+export function isSharedTripGroup(periods: WorkspaceLocationPeriod[]) {
+  const people = new Set(periods.map((period) => period.person_id || period.person?.id).filter(Boolean));
+  return people.size > 1 || periods.some((period) => /\bshared\b|\bhousehold\b|\bcouple\b|\bpareja\b/i.test(period.trip_purpose ?? ""));
+}
+
 export function transactionIdsForLocationPeriod(period: WorkspaceLocationPeriod, transactions: WorkspaceTransaction[], asOfDate: string, equivalentPeriodIds: Iterable<string> = [period.id]) {
   const periodIds = new Set(equivalentPeriodIds);
   return transactions.filter((transaction) => {

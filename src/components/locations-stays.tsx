@@ -3,15 +3,29 @@
 import { Check, MapPin, Plus, Scissors, X } from "lucide-react";
 import { FormEvent, useMemo, useState } from "react";
 import type { FinanceMutate, OpenTransactions } from "@/components/finance-ui-types";
-import { buildTripExpenseReport, isTripPeriod, transactionIdsForLocationPeriod, type TripExpenseReport } from "@/lib/locations/trip-report";
+import { buildTripExpenseReport, groupEquivalentTripPeriods, isSharedTripGroup, isTripPeriod, transactionIdsForLocationPeriod, type TripExpenseReport } from "@/lib/locations/trip-report";
 import type { WorkspaceData, WorkspaceLocationPeriod } from "@/lib/workspace/demo";
 
-export function LocationsAndStays({ workspace, personId, mutate, openTransactions }: { workspace: WorkspaceData; personId?: string | null; mutate: FinanceMutate; openTransactions: OpenTransactions }) {
+interface TripCardData {
+  trip: TripExpenseReport;
+  scope: "shared" | "individual" | "default";
+  travelers: string[];
+}
+
+export function LocationsAndStays({ workspace, personId, sharedOverview = false, mutate, openTransactions }: { workspace: WorkspaceData; personId?: string | null; sharedOverview?: boolean; mutate: FinanceMutate; openTransactions: OpenTransactions }) {
   const [showAdd, setShowAdd] = useState(false);
   const periods = workspace.locationPeriods;
   const confirmed = periods.filter((period) => period.status === "confirmed");
   const suggested = periods.filter((period) => period.status === "suggested");
-  const tripReports = useMemo(() => groupEquivalentTrips(confirmed.filter(isTripPeriod), Boolean(personId)).map((group) => buildTripExpenseReport(group[0], workspace.transactions, workspace.asOfDate, group.map((period) => period.id))).sort((left, right) => right.period.starts_on.localeCompare(left.period.starts_on)), [confirmed, personId, workspace.asOfDate, workspace.transactions]);
+  const tripCards = useMemo<TripCardData[]>(() => groupEquivalentTripPeriods(confirmed.filter(isTripPeriod), sharedOverview).map<TripCardData>((group) => {
+    const travelers = [...new Set(group.map((period) => period.person?.display_name).filter((name): name is string => Boolean(name)))];
+    const transactions = transactionsForTripGroup(group, workspace.transactions);
+    return {
+      trip: buildTripExpenseReport(group[0], transactions, workspace.asOfDate, group.map((period) => period.id)),
+      scope: sharedOverview ? isSharedTripGroup(group) ? "shared" : "individual" : "default",
+      travelers,
+    };
+  }).sort((left, right) => right.trip.period.starts_on.localeCompare(left.trip.period.starts_on)), [confirmed, sharedOverview, workspace.asOfDate, workspace.transactions]);
   const idsFor = (period: WorkspaceLocationPeriod) => period.id.startsWith("suggested:") ? arrayEvidence(period.evidence.transactionIds) : transactionIdsForLocationPeriod(period, workspace.transactions, workspace.asOfDate);
   const saveGenerated = async (period: WorkspaceLocationPeriod, status: "confirmed" | "rejected") => mutate("/api/locations", "POST", { personId, countryName: period.location.country_name || period.location.name, countryCode: period.location.country_code, locationName: period.location.name, defaultCurrency: period.location.default_currency, startsOn: period.starts_on, endsOn: period.ends_on, status, periodType: period.period_type, confidence: period.confidence, explanation: period.explanation, evidence: period.evidence, transactionIds: idsFor(period) });
 
@@ -20,8 +34,8 @@ export function LocationsAndStays({ workspace, personId, mutate, openTransaction
     {showAdd ? <ManualLocationForm personId={personId} mutate={mutate} onDone={() => setShowAdd(false)} /> : null}
 
     <article className="rounded-[22px] border border-[var(--forest)] bg-[var(--surface)] p-5 sm:p-6">
-      <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--forest)]">Travel overview</p><h2 className="mt-1 text-lg font-semibold">Trips and their spending</h2><p className="mt-1 max-w-3xl text-sm leading-6 text-[var(--muted)]">Each total uses the trip&apos;s real expenses and linked advance bookings. Subscriptions and Papaya Kids are excluded because they do not describe where you were.</p></div><span className="rounded-full bg-[var(--forest-soft)] px-3 py-1.5 text-xs font-semibold text-[var(--forest)]">USD · {tripReports.length} trip{tripReports.length === 1 ? "" : "s"}</span></div>
-      <div className="mt-5 grid gap-4 lg:grid-cols-2">{tripReports.map((trip) => <TripExpenseCard key={trip.period.id} trip={trip} openTransactions={openTransactions} />)}{!tripReports.length ? <p className="rounded-2xl bg-[var(--paper)] p-5 text-sm text-[var(--muted)] lg:col-span-2">Confirmed temporary stays will appear here with their spending.</p> : null}</div>
+      <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--forest)]">Travel overview</p><h2 className="mt-1 text-lg font-semibold">Trips and their spending</h2><p className="mt-1 max-w-3xl text-sm leading-6 text-[var(--muted)]">Each total uses the trip&apos;s real expenses and linked advance bookings. Subscriptions and Papaya Kids are excluded because they do not describe where you were.</p>{sharedOverview ? <div className="mt-3 flex flex-wrap gap-3 text-[10px] font-semibold uppercase tracking-[0.08em]"><span className="inline-flex items-center gap-1.5 text-[var(--forest)]"><span className="size-2.5 rounded-full bg-[var(--forest)]" />Shared trip</span><span className="inline-flex items-center gap-1.5 text-[#66569a]"><span className="size-2.5 rounded-full bg-[#7565a8]" />Individual trip</span></div> : null}</div><span className="rounded-full bg-[var(--forest-soft)] px-3 py-1.5 text-xs font-semibold text-[var(--forest)]">USD · {tripCards.length} trip{tripCards.length === 1 ? "" : "s"}</span></div>
+      <div className="mt-5 grid gap-4 lg:grid-cols-2">{tripCards.map((card) => <TripExpenseCard key={card.trip.period.id} trip={card.trip} scope={card.scope} travelers={card.travelers} openTransactions={openTransactions} />)}{!tripCards.length ? <p className="rounded-2xl bg-[var(--paper)] p-5 text-sm text-[var(--muted)] lg:col-span-2">Confirmed temporary stays will appear here with their spending.</p> : null}</div>
     </article>
 
     <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
@@ -31,13 +45,15 @@ export function LocationsAndStays({ workspace, personId, mutate, openTransaction
   </section>;
 }
 
-function TripExpenseCard({ trip, openTransactions }: { trip: TripExpenseReport; openTransactions: OpenTransactions }) {
+function TripExpenseCard({ trip, scope, travelers, openTransactions }: { trip: TripExpenseReport; scope: TripCardData["scope"]; travelers: string[]; openTransactions: OpenTransactions }) {
   const { period, report } = trip;
   const name = period.location.country_name || period.location.name;
   const maxCategory = Math.max(1, ...report.categories.map((category) => Math.abs(category.amount)));
   const currencies = report.originalCurrencies.map((item) => item.currency).join(", ") || "USD";
-  return <section className="overflow-hidden rounded-2xl border border-[var(--line)] bg-[var(--paper)]">
-    <div className="flex flex-wrap items-start justify-between gap-3 p-4 sm:p-5"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h3 className="text-lg font-semibold">{name}</h3><span className="rounded-full bg-[#dceaf2] px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.08em] text-[#315b73]">{period.trip_purpose || "Temporary stay"}</span></div><p className="mt-1 text-xs text-[var(--muted)]">{friendlyDate(period.starts_on)} – {friendlyDate(period.ends_on || "")}</p><p className="mt-1 text-[10px] text-[var(--muted)]">Original currencies: {currencies}</p></div><button type="button" onClick={() => openTransactions({ title: `${name} trip spending`, transactionIds: report.total.transactionIds, range: report.range })} className="rounded-xl bg-[var(--forest)] px-3 py-2 text-right text-white"><strong className="block font-mono text-base">{money(report.total.amount)}</strong><span className="block text-[9px] opacity-80">{report.total.transactionIds.length} expenses · open all</span></button></div>
+  const individual = scope === "individual";
+  const scopeLabel = scope === "shared" ? `Shared${travelers.length ? ` · ${travelers.join(" + ")}` : ""}` : individual ? `Individual${travelers.length ? ` · ${travelers.join(" + ")}` : ""}` : travelers.join(" + ");
+  return <section className="overflow-hidden rounded-2xl border" style={{ borderColor: individual ? "#a59ac8" : "var(--line)", backgroundColor: individual ? "#f5f2fb" : "var(--paper)" }}>
+    <div className="flex flex-wrap items-start justify-between gap-3 p-4 sm:p-5"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h3 className="text-lg font-semibold">{name}</h3>{scopeLabel ? <span className="rounded-full px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.08em]" style={{ backgroundColor: individual ? "#e3def2" : "var(--forest-soft)", color: individual ? "#66569a" : "var(--forest)" }}>{scopeLabel}</span> : null}<span className="rounded-full bg-[#dceaf2] px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.08em] text-[#315b73]">{period.trip_purpose || "Temporary stay"}</span></div><p className="mt-1 text-xs text-[var(--muted)]">{friendlyDate(period.starts_on)} – {friendlyDate(period.ends_on || "")}</p><p className="mt-1 text-[10px] text-[var(--muted)]">Original currencies: {currencies}</p></div><button type="button" onClick={() => openTransactions({ title: `${name} trip spending`, transactionIds: report.total.transactionIds, range: report.range })} className="rounded-xl px-3 py-2 text-right text-white" style={{ backgroundColor: individual ? "#7565a8" : "var(--forest)" }}><strong className="block font-mono text-base">{money(report.total.amount)}</strong><span className="block text-[9px] opacity-80">{report.total.transactionIds.length} expenses · open all</span></button></div>
     <div className="space-y-3 border-t border-[var(--line)] bg-white/60 p-4 sm:p-5">{report.categories.map((category) => <button key={category.id} type="button" onClick={() => openTransactions({ title: `${name} trip · ${category.name}`, transactionIds: category.transactionIds, range: report.range })} className="block w-full text-left"><div className="mb-1 flex items-center justify-between gap-3 text-xs"><span className="min-w-0 truncate"><span className="mr-2 inline-block size-2 rounded-full" style={{ backgroundColor: category.color }} />{category.name}</span><span className="shrink-0"><strong className="font-mono">{money(category.amount)}</strong><span className="ml-2 text-[9px] text-[var(--muted)]">{percentage(category.amount, report.total.amount)}</span></span></div><div className="h-1.5 overflow-hidden rounded-full bg-[var(--paper-deep)]"><div className="h-full rounded-full" style={{ width: `${Math.max(2, Math.abs(category.amount) / maxCategory * 100)}%`, backgroundColor: category.color }} /></div></button>)}{!report.categories.length ? <p className="text-xs text-[var(--muted)]">No spending transactions are linked to this trip yet.</p> : null}{report.missingFxTransactionIds.length ? <button type="button" onClick={() => openTransactions({ title: `${name} trip · awaiting USD conversion`, transactionIds: report.missingFxTransactionIds, range: report.range })} className="text-xs font-semibold text-[var(--amber)] underline underline-offset-4">{report.missingFxTransactionIds.length} transaction{report.missingFxTransactionIds.length === 1 ? " is" : "s are"} awaiting a USD conversion</button> : null}</div>
     <p className="border-t border-[var(--line)] px-4 py-3 text-[10px] leading-4 text-[var(--muted)]">Transaction window: {friendlyDate(report.range.from)} – {friendlyDate(report.range.to)}. This may begin before the stay when a flight or hotel was booked in advance.</p>
   </section>;
@@ -55,14 +71,15 @@ function ManualLocationForm({ personId, mutate, onDone }: { personId?: string | 
 function MiniDate({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) { return <label className="text-[10px] font-semibold text-[var(--muted)]">{label}<input type="date" value={value} onChange={(event) => onChange(event.target.value)} className="mt-1 block h-9 w-full rounded-lg border border-[var(--line)] bg-white px-2 text-xs text-[var(--ink)]" /></label>; }
 function TextField({ label, name, type = "text", required = false, placeholder }: { label: string; name: string; type?: string; required?: boolean; placeholder?: string }) { return <label className="text-xs font-semibold">{label}<input name={name} type={type} required={required} placeholder={placeholder} className="field" /></label>; }
 function arrayEvidence(value: unknown) { return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : []; }
-function groupEquivalentTrips(periods: WorkspaceLocationPeriod[], keepPeopleSeparate: boolean) {
-  if (keepPeopleSeparate) return periods.map((period) => [period]);
-  const groups = new Map<string, WorkspaceLocationPeriod[]>();
-  for (const period of periods) {
-    const key = [period.location.country_code || period.location.country_name || period.location.name, period.starts_on, period.ends_on || "ongoing"].join(":");
-    groups.set(key, [...(groups.get(key) ?? []), period]);
-  }
-  return [...groups.values()];
+function transactionsForTripGroup(periods: WorkspaceLocationPeriod[], transactions: WorkspaceData["transactions"]) {
+  const periodIds = new Set(periods.map((period) => period.id));
+  const travelerIds = new Set(periods.map((period) => period.person_id || period.person?.id).filter((id): id is string => Boolean(id)));
+  if (!travelerIds.size) return transactions;
+  return transactions.filter((transaction) => {
+    if (transaction.location_period?.id && periodIds.has(transaction.location_period.id)) return true;
+    const payerId = transaction.paid_by?.id ?? transaction.account_owner?.id;
+    return Boolean(payerId && travelerIds.has(payerId));
+  });
 }
 function money(value: number) { return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(value); }
 function percentage(value: number, total: number) { return total ? `${Math.round(Math.abs(value) / Math.abs(total) * 100)}%` : "0%"; }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildTripExpenseReport, isTripPeriod, transactionIdsForLocationPeriod } from "./trip-report";
+import { buildTripExpenseReport, groupEquivalentTripPeriods, isSharedTripGroup, isTripPeriod, transactionIdsForLocationPeriod } from "./trip-report";
 import type { WorkspaceLocationPeriod, WorkspaceTransaction } from "@/lib/workspace/demo";
 
 const period: WorkspaceLocationPeriod = {
@@ -69,5 +69,18 @@ describe("trip expense reports", () => {
     const report = buildTripExpenseReport(period, [luciana, julian], "2026-09-14", [period.id, partnerPeriod.id]).report;
 
     expect(report.total).toEqual({ amount: 120, transactionIds: ["luciana", "julian"] });
+  });
+
+  it("groups matching household trips but keeps explicitly individual trips separate", () => {
+    const luciana = { ...period, person_id: "luciana", person: { id: "luciana", display_name: "Luciana", role: "self" } };
+    const julian = { ...period, id: "mexico-julian", person_id: "julian", person: { id: "julian", display_name: "Julian", role: "partner" } };
+    const julianPersonal = { ...julian, id: "canada-julian", location: { ...julian.location, id: "ca", name: "Canada", country_name: "Canada", country_code: "CA" }, starts_on: "2026-05-15", ends_on: "2026-05-26", trip_purpose: "Personal trip" };
+    const lucianaWork = { ...luciana, id: "canada-luciana", location: julianPersonal.location, starts_on: "2026-05-15", ends_on: "2026-05-26", trip_purpose: "Work trip" };
+    const groups = groupEquivalentTripPeriods([luciana, julian, julianPersonal, lucianaWork], true);
+
+    expect(groups).toHaveLength(3);
+    expect(groups.find((group) => group.length === 2)?.map((item) => item.id)).toEqual([period.id, "mexico-julian"]);
+    expect(isSharedTripGroup(groups.find((group) => group.length === 2) ?? [])).toBe(true);
+    expect(groups.filter((group) => !isSharedTripGroup(group))).toHaveLength(2);
   });
 });
