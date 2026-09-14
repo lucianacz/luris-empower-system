@@ -1,6 +1,7 @@
 import Decimal from "decimal.js";
 import { isRuntimeDuplicate } from "@/lib/import/runtime-duplicates";
 import { defaultExpenseCategories, suggestDefaultCategory } from "@/lib/categories/defaults";
+import { isLocationIndependentCategory } from "@/lib/locations/attribution";
 import { completedMonthKeys, monthKeysInRange, normalizeRange, type DateRange } from "./periods";
 import type { WorkspaceTransaction } from "@/lib/workspace/demo";
 
@@ -98,9 +99,11 @@ export function buildSpendingReport(transactions: WorkspaceTransaction[], inputR
     const category = categoryFor(transaction);
     addGroup(categories, category.id, category.name, category.color, reportingValue, transaction.id, { detail: category.lifeArea, essential: category.essential, extraordinary: category.extraordinary });
     addGroup(lifeAreas, category.lifeArea, category.lifeArea, category.color, reportingValue, transaction.id);
-    const location = transaction.location_period?.location;
-    const locationName = location?.country_name || location?.name || "Location not confirmed";
-    addGroup(locations, transaction.location_period?.id ?? "unconfirmed", locationName, transaction.location_period ? "#496f5d" : "#a9a39a", reportingValue, transaction.id, { detail: transaction.location_period?.period_type?.replaceAll("_", " ") });
+    if (!isLocationIndependentCategory(category.name)) {
+      const location = transaction.location_period?.location;
+      const locationName = location?.country_name || location?.name || "Location not confirmed";
+      addGroup(locations, transaction.location_period?.id ?? "unconfirmed", locationName, transaction.location_period ? "#496f5d" : "#a9a39a", reportingValue, transaction.id, { detail: transaction.location_period?.period_type?.replaceAll("_", " ") });
+    }
 
     if (transaction.beneficiary_scope === "shared") add(household, reportingValue, transaction.id);
     else add(personal, reportingValue, transaction.id);

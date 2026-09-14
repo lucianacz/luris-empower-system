@@ -3,6 +3,7 @@
 import { Check, MapPin, Plus, Scissors, X } from "lucide-react";
 import { FormEvent, useMemo, useState } from "react";
 import type { FinanceMutate, OpenTransactions } from "@/components/finance-ui-types";
+import { isLocationIndependentCategory } from "@/lib/locations/attribution";
 import type { WorkspaceData, WorkspaceLocationPeriod } from "@/lib/workspace/demo";
 
 export function LocationsAndStays({ workspace, personId, mutate, openTransactions }: { workspace: WorkspaceData; personId?: string | null; mutate: FinanceMutate; openTransactions: OpenTransactions }) {
@@ -11,6 +12,7 @@ export function LocationsAndStays({ workspace, personId, mutate, openTransaction
   const confirmed = periods.filter((period) => period.status === "confirmed");
   const suggested = periods.filter((period) => period.status === "suggested");
   const idsFor = (period: WorkspaceLocationPeriod) => period.id.startsWith("suggested:") ? arrayEvidence(period.evidence.transactionIds) : workspace.transactions.filter((transaction) => {
+    if (isLocationIndependentCategory(transaction.category?.name)) return false;
     if (transaction.location_period?.id === period.id) return true;
     if (!transaction.travel_date || transaction.travel_destination?.toUpperCase() !== period.location.country_code?.toUpperCase()) return false;
     return transaction.travel_date >= period.starts_on && transaction.travel_date <= (period.ends_on || workspace.asOfDate);
@@ -33,7 +35,7 @@ function ConfirmedPeriod({ period, next, workspace, mutate, transactionIds, open
   const [to, setTo] = useState(period.ends_on ?? "");
   const [splitOn, setSplitOn] = useState("");
   const range = useMemo(() => ({ from: period.starts_on, to: period.ends_on || workspace.asOfDate }), [period, workspace.asOfDate]);
-  const related = workspace.transactions.filter((transaction) => transactionIds.includes(transaction.id) && transaction.status === "posted" && !transaction.excluded_from_totals && Number(transaction.amount) < 0 && ["expense", "fee", "tax"].includes(transaction.kind) && transaction.category?.name !== "Papaya Kids");
+  const related = workspace.transactions.filter((transaction) => transactionIds.includes(transaction.id) && transaction.status === "posted" && !transaction.excluded_from_totals && Number(transaction.amount) < 0 && ["expense", "fee", "tax"].includes(transaction.kind) && !isLocationIndependentCategory(transaction.category?.name));
   const spend = tripSpend(related);
   return <div className="rounded-2xl bg-[var(--paper)] p-4"><div className="flex items-start justify-between gap-3"><div><h3 className="font-semibold">{period.location.country_name || period.location.name}</h3><p className="mt-1 text-xs capitalize text-[var(--muted)]">{period.period_type.replaceAll("_", " ")}{period.trip_purpose ? ` · ${period.trip_purpose}` : ""}</p>{period.trip_purpose ? <><p className="mt-2 font-mono text-sm font-semibold text-[var(--forest)]">Trip spending: {spend.label}</p><p className="mt-1 text-[10px] text-[var(--muted)]">{spend.count} spending transaction{spend.count === 1 ? "" : "s"}, including linked flights bought before the stay.</p></> : null}</div><button onClick={() => openTransactions({ title: `${period.location.country_name || period.location.name} transactions`, transactionIds, range })} className="text-xs font-semibold text-[var(--forest)]">{transactionIds.length} transactions</button></div><div className="mt-3 grid grid-cols-2 gap-2"><MiniDate label="From" value={from} onChange={setFrom} /><MiniDate label="To" value={to} onChange={setTo} /></div><div className="mt-3 flex flex-wrap gap-2"><button disabled={workspace.mode !== "live"} onClick={() => void mutate(`/api/locations/${period.id}`, "PATCH", { startsOn: from, endsOn: to || null })} className="rounded-lg border border-[var(--line)] px-3 py-1.5 text-xs font-semibold disabled:opacity-45">Save dates</button>{next && next.location.id === period.location.id ? <button disabled={workspace.mode !== "live"} onClick={() => void mutate(`/api/locations/${period.id}`, "PATCH", { action: "merge", targetPeriodId: next.id })} className="rounded-lg border border-[var(--line)] px-3 py-1.5 text-xs font-semibold disabled:opacity-45">Merge next</button> : null}</div><div className="mt-3 flex items-end gap-2 border-t border-[var(--line)] pt-3"><MiniDate label="Split on" value={splitOn} onChange={setSplitOn} /><button disabled={workspace.mode !== "live" || !splitOn} onClick={() => void mutate(`/api/locations/${period.id}`, "PATCH", { action: "split", splitOn })} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[var(--line)] px-3 text-xs font-semibold disabled:opacity-45"><Scissors aria-hidden="true" className="size-3.5" />Split</button></div></div>;
 }

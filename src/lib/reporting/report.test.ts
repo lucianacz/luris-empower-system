@@ -49,6 +49,22 @@ describe("traceable USD spending reports", () => {
     expect(report.total.amount).toBe(340);
   });
 
+  it("keeps subscriptions and Papaya Kids in spending but outside location totals", () => {
+    const canada = {
+      id: "canada-period", starts_on: "2026-05-01", ends_on: "2026-05-31", status: "confirmed" as const,
+      period_type: "temporary_stay" as const, trip_purpose: "Personal trip", confidence: 1, explanation: "Confirmed", evidence: {},
+      location: { id: "canada", name: "Canada", country_code: "CA", country_name: "Canada", default_currency: "CAD" },
+    };
+    const subscription = { ...expense("subscription", "2026-05-10", "-20", "Subscriptions & software"), location_period: canada };
+    const business = { ...expense("business", "2026-05-11", "-100", "Papaya Kids"), location_period: canada };
+    const hotel = { ...expense("hotel", "2026-05-12", "-300", "Hotels"), location_period: canada };
+    const report = buildSpendingReport([subscription, business, hotel], { from: "2026-05-01", to: "2026-05-31" }, "2026-09-13");
+
+    expect(report.total.amount).toBe(420);
+    expect(report.categories.map((category) => category.name)).toEqual(["Hotels", "Papaya Kids", "Subscriptions & software"]);
+    expect(report.locations).toEqual([expect.objectContaining({ name: "Canada", amount: 300, transactionIds: ["hotel"] })]);
+  });
+
   it("reconciles the former USD 11,824.42 example to exact transactions", () => {
     const report = buildSpendingReport(demoWorkspace.transactions, { from: "2026-03-01", to: "2026-08-31" }, demoWorkspace.asOfDate);
     expect(report.total.amount).toBe(11824.42);

@@ -10,6 +10,7 @@ import { backfillEstimatedReportingValues } from "@/lib/exchange-rates/backfill"
 import { analyzeRecurring } from "./recurring";
 import { currentFinanceDate } from "@/lib/dates/current-date";
 import { hasManualBeneficiaryScope, isCostaRicaHouseholdFood } from "@/lib/spending/beneficiary-scope";
+import { isLocationIndependentCategory } from "@/lib/locations/attribution";
 
 export async function rebuildSpendingIntelligence(supabase: SupabaseClient, userId: string) {
   const categoryIds = await ensureDefaultCategories(supabase, userId);
@@ -18,6 +19,7 @@ export async function rebuildSpendingIntelligence(supabase: SupabaseClient, user
   await applyKnownMerchantRules(supabase, userId, transactions, categoryIds);
   await applySpecificCategoryRefinements(supabase, userId, transactions, categoryIds);
   await applyDefaultCategorySuggestions(supabase, userId, transactions, categoryIds);
+  await clearLocationIndependentAttribution(supabase, userId, transactions);
   await applyHospitalAlemanRule(supabase, userId, transactions, categoryIds.get("Health insurance") ?? null);
   await applyConfirmedFundingAttributions(supabase, userId, transactions);
   await applyHouseholdRules(supabase, userId, transactions);
@@ -293,25 +295,6 @@ async function applySpecificCategoryRefinements(supabase: SupabaseClient, userId
     }
   }
 
-  const partnerPapayaKids = transactions.filter((transaction) => transaction.account_owner?.role === "partner" && transaction.category?.name === "Papaya Kids");
-  for (let index = 0; index < partnerPapayaKids.length; index += 500) {
-    const { error } = await supabase.from("transactions").update({
-      beneficiary_scope: "personal",
-      location_period_id: null,
-      travel_origin: null,
-      travel_destination: null,
-      travel_date: null,
-      merchant_country: null,
-    }).eq("user_id", userId).in("id", partnerPapayaKids.slice(index, index + 500).map((transaction) => transaction.id));
-    if (error) throw error;
-  }
-  for (const transaction of partnerPapayaKids) {
-    transaction.beneficiary_scope = "personal";
-    transaction.location_period = null;
-    transaction.travel_destination = null;
-    transaction.merchant_country = null;
-  }
-
   const therapyRows = transactions.filter((transaction) => /daniel\s+jesica\s+solange/i.test(cleanDescription(transaction.description)));
   const therapyExpenses = therapyRows.filter((transaction) => transaction.status === "posted" && Number(transaction.amount) < 0);
   const therapyZeroRows = therapyRows.filter((transaction) => Number(transaction.amount) === 0);
@@ -347,6 +330,27 @@ async function applySpecificCategoryRefinements(supabase: SupabaseClient, userId
     transaction.kind = "unknown";
     transaction.excluded_from_totals = true;
     transaction.transaction_label = "Transfer with Julian · not Satu Lagi";
+  }
+}
+
+async function clearLocationIndependentAttribution(supabase: SupabaseClient, userId: string, transactions: WorkspaceTransaction[]) {
+  const related = transactions.filter((transaction) => isLocationIndependentCategory(transaction.category?.name));
+  for (let index = 0; index < related.length; index += 500) {
+    const { error } = await supabase.from("transactions").update({
+      location_period_id: null,
+      travel_origin: null,
+      travel_destination: null,
+      travel_date: null,
+      merchant_country: null,
+    }).eq("user_id", userId).in("id", related.slice(index, index + 500).map((transaction) => transaction.id));
+    if (error) throw error;
+  }
+  for (const transaction of related) {
+    transaction.location_period = null;
+    transaction.travel_origin = null;
+    transaction.travel_destination = null;
+    transaction.travel_date = null;
+    transaction.merchant_country = null;
   }
 }
 

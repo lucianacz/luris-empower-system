@@ -44,4 +44,15 @@ describe("dynamic location inference", () => {
     ];
     expect(inferLocationSuggestions(rows)).toEqual([]);
   });
+
+  it("does not infer a stay from repeated Papaya Kids company spending", () => {
+    const category = { name: "Papaya Kids", life_area: "Business", is_essential: false, is_extraordinary: false, color: "#b06d32" };
+    const rows = [
+      { ...row("1", "2026-05-01", "CNY"), category },
+      { ...row("2", "2026-05-02", "CNY"), category },
+      { ...row("3", "2026-05-03", "CNY"), category },
+      { ...row("4", "2026-05-05", "CNY"), category },
+    ];
+    expect(inferLocationSuggestions(rows)).toEqual([]);
+  });
 });

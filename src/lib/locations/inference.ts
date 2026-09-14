@@ -1,4 +1,5 @@
 import type { WorkspaceLocationPeriod, WorkspaceTransaction } from "@/lib/workspace/demo";
+import { isLocationIndependentCategory } from "./attribution";
 
 export interface LocationSuggestion {
   key: string;
@@ -63,7 +64,7 @@ function countrySignal(transaction: WorkspaceTransaction, availableHints: typeof
 
 function isRemoteOrProcessorMerchant(transaction: WorkspaceTransaction) {
   const value = `${transaction.description} ${transaction.merchant_name ?? ""} ${transaction.category?.name ?? ""}`;
-  return transaction.category?.name === "Subscriptions & software" || /\bairbnb\b|\bapple\.com\/bill\b|\b(?:anthropic|claude|adobe|openai|netflix|spotify|youtube|icloud)\b|\buber\b/i.test(value);
+  return isLocationIndependentCategory(transaction.category?.name) || /\bairbnb\b|\bapple\.com\/bill\b|\b(?:anthropic|claude|adobe|openai|netflix|spotify|youtube|icloud)\b|\buber\b/i.test(value);
 }
 
 function clusterSignals(items: Signal[], confirmed: WorkspaceLocationPeriod[]) {
