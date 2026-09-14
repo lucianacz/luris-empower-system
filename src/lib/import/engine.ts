@@ -176,6 +176,7 @@ function providerLabel(provider: Provider): string {
 function accountLabel(detection: DetectionResult, currencies: string[]): string {
   if (detection.provider === "deel" && detection.variant === "card") return "Deel card";
   if (detection.provider === "deel" && detection.variant === "balance") return "Deel balance";
+  if (detection.provider === "wise") return "Wise account";
   return `${providerLabel(detection.provider)} ${currencies.join(" / ") || "account"}`;
 }
 

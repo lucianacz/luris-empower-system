@@ -102,9 +102,8 @@ export function buildSpendingReport(transactions: WorkspaceTransaction[], inputR
     const locationName = location?.country_name || location?.name || "Location not confirmed";
     addGroup(locations, transaction.location_period?.id ?? "unconfirmed", locationName, transaction.location_period ? "#496f5d" : "#a9a39a", reportingValue, transaction.id, { detail: transaction.location_period?.period_type?.replaceAll("_", " ") });
 
-    const personalShare = personalPercentage(transaction);
-    add(personal, reportingValue.times(personalShare), transaction.id);
-    add(household, reportingValue.times(new Decimal(1).minus(personalShare)), transaction.id);
+    if (transaction.beneficiary_scope === "shared") add(household, reportingValue, transaction.id);
+    else add(personal, reportingValue, transaction.id);
     add(category.essential ? essential : flexible, reportingValue, transaction.id);
     if (category.extraordinary) add(extraordinary, reportingValue, transaction.id);
 
@@ -233,12 +232,6 @@ function isFlight(transaction: WorkspaceTransaction) {
   if (transaction.category?.name === "Flights") return true;
   const text = `${transaction.description} ${transaction.metadata?.mccLabel ?? ""}`;
   return /airline|aeroline|avianca|latam|lan airline|copa air|vivaaerobus|sansa|air transport/i.test(text);
-}
-
-function personalPercentage(transaction: WorkspaceTransaction) {
-  const splits = transaction.expense_splits ?? [];
-  if (!splits.length) return transaction.beneficiary_scope === "shared" ? new Decimal(0.5) : new Decimal(1);
-  return splits.filter((split) => split.split_kind === "personal").reduce((sum, split) => sum.plus(split.percentage ?? 0), new Decimal(0));
 }
 
 export function canonicalMerchant(value: string) {

@@ -18,6 +18,7 @@ export async function rebuildSpendingIntelligence(supabase: SupabaseClient, user
   await applySpecificCategoryRefinements(supabase, userId, transactions, categoryIds);
   await applyDefaultCategorySuggestions(supabase, userId, transactions, categoryIds);
   await applyHospitalAlemanRule(supabase, userId, transactions, categoryIds.get("Health insurance") ?? null);
+  await applyConfirmedFundingAttributions(supabase, userId, transactions);
   await applyHouseholdRules(supabase, userId, transactions);
   const automaticallyDismissedQuestions = await dismissUnnecessaryQuestions(supabase, userId, transactions);
   const estimatedReportingValueCount = await backfillEstimatedReportingValues(supabase, userId);
@@ -212,20 +213,22 @@ async function applySpecificCategoryRefinements(supabase: SupabaseClient, userId
 async function applyHouseholdRules(supabase: SupabaseClient, userId: string, transactions: WorkspaceTransaction[]) {
   const sharedTravelAndCar = new Set(["Flights", "Diving & activities", "Hotels", "Car", "Car rental", "Car repairs", "Fuel & gas", "Parking", "Tolls & highways"]);
   const sharedIds: string[] = [];
-  const personalCanadaIds: string[] = [];
+  const personalSoloTripIds: string[] = [];
 
   for (const transaction of transactions) {
     if (transaction.status !== "posted" || transaction.excluded_from_totals || transaction.kind !== "expense") continue;
     const categoryName = transaction.category?.name ?? null;
     const country = transaction.location_period?.location.country_code ?? transaction.merchant_country ?? null;
     const travelDestination = transaction.travel_destination?.toUpperCase() ?? null;
-    const isCanadaTravel = country === "CA" || travelDestination === "CA";
+    const isCanadaTravel = country === "CA" || travelDestination === "CA" || transaction.original_currency === "CAD";
+    const isJulianBrazilTrip = transaction.account_owner?.role === "partner" && (country === "BR" || travelDestination === "BR" || transaction.original_currency === "BRL");
+    const isSoloTrip = isCanadaTravel || isJulianBrazilTrip;
     const isTravelOrCar = sharedTravelAndCar.has(categoryName ?? "");
     const isMexico = country === "MX";
     const isCostaRicaRestaurant = country === "CR" && categoryName === "Dining out";
     const isYouTube = /youtube\s*\(via apple\)|apple\.com(?:\/|\s+)bill/i.test(`${transaction.merchant_name ?? ""} ${transaction.description}`) && Math.abs(Number(transaction.amount)) === 9.49;
 
-    if (isTravelOrCar && isCanadaTravel) personalCanadaIds.push(transaction.id);
+    if (isSoloTrip) personalSoloTripIds.push(transaction.id);
     else if (isTravelOrCar || isMexico || isCostaRicaRestaurant || isYouTube) sharedIds.push(transaction.id);
   }
 
@@ -234,16 +237,71 @@ async function applyHouseholdRules(supabase: SupabaseClient, userId: string, tra
     const { error } = await supabase.from("transactions").update({ beneficiary_scope: "shared" }).eq("user_id", userId).in("id", ids);
     if (error) throw error;
   }
-  for (let index = 0; index < personalCanadaIds.length; index += 500) {
-    const ids = personalCanadaIds.slice(index, index + 500);
+  for (let index = 0; index < personalSoloTripIds.length; index += 500) {
+    const ids = personalSoloTripIds.slice(index, index + 500);
     const { error } = await supabase.from("transactions").update({ beneficiary_scope: "personal" }).eq("user_id", userId).in("id", ids);
     if (error) throw error;
   }
   const sharedSet = new Set(sharedIds);
-  const personalSet = new Set(personalCanadaIds);
+  const personalSet = new Set(personalSoloTripIds);
   for (const transaction of transactions) {
     if (sharedSet.has(transaction.id)) transaction.beneficiary_scope = "shared";
     if (personalSet.has(transaction.id)) transaction.beneficiary_scope = "personal";
+  }
+}
+
+async function applyConfirmedFundingAttributions(supabase: SupabaseClient, userId: string, transactions: WorkspaceTransaction[]) {
+  const { data: people, error: peopleError } = await supabase.from("people").select("id,display_name,role").eq("user_id", userId).in("role", ["self", "partner"]);
+  if (peopleError) throw peopleError;
+  const luciana = (people ?? []).find((person) => person.role === "self");
+  const julian = (people ?? []).find((person) => person.role === "partner");
+  if (!luciana || !julian) return;
+
+  const lucianaFunding = transactions.filter((transaction) => {
+    if (transaction.account_owner?.role !== "self" || transaction.kind !== "transfer" || transaction.status !== "posted") return false;
+    const holder = typeof transaction.metadata?.withdrawAccountHolderName === "string" ? transaction.metadata.withdrawAccountHolderName : "";
+    return /julian(?:\s+aaron)?\s+stivelman/i.test(`${holder} ${transaction.description}`);
+  });
+  const attributedIds = new Set<string>();
+
+  for (const funding of lucianaFunding) {
+    const fundingDate = new Date(funding.occurred_at).getTime();
+    const fundingAmount = Math.abs(Number(funding.amount));
+    const tolerance = Math.max(25, fundingAmount * 0.03);
+    const candidate = transactions
+      .filter((transaction) => {
+        if (attributedIds.has(transaction.id) || transaction.account_owner?.role !== "partner" || transaction.status !== "posted" || Number(transaction.amount) >= 0) return false;
+        if (!["expense", "fee", "tax", "investment_purchase"].includes(transaction.kind)) return false;
+        const elapsedDays = (new Date(transaction.occurred_at).getTime() - fundingDate) / 86_400_000;
+        return elapsedDays >= 0 && elapsedDays <= 10 && Math.abs(Math.abs(Number(transaction.amount)) - fundingAmount) <= tolerance;
+      })
+      .sort((left, right) => Math.abs(Math.abs(Number(left.amount)) - fundingAmount) - Math.abs(Math.abs(Number(right.amount)) - fundingAmount))[0];
+    if (!candidate) continue;
+    attributedIds.add(candidate.id);
+    const metadata = {
+      ...(candidate.metadata ?? {}),
+      fundingSourceTransactionId: funding.id,
+      attributionNote: "Paid by Luciana through Julian's Wise account after a direct Deel transfer.",
+    };
+    const { error } = await supabase.from("transactions").update({ paid_by_id: luciana.id, metadata }).eq("user_id", userId).eq("id", candidate.id);
+    if (error) throw error;
+    candidate.metadata = metadata;
+  }
+
+  const satuLagiRows = transactions.filter((transaction) => /baltodano\s+gomez\s+martin/i.test(`${transaction.description} ${transaction.merchant_name ?? ""}`));
+  const lucianaLegalRows = transactions.filter((transaction) => /gutierrez\s+gonzalez\s+kaily\s+vanessa/i.test(`${transaction.description} ${transaction.merchant_name ?? ""}`) && Math.abs(Number(transaction.amount)) < 300);
+  const julianLegalRows = transactions.filter((transaction) => /gutierrez\s+gonzalez\s+kaily\s+vanessa/i.test(`${transaction.description} ${transaction.merchant_name ?? ""}`) && Math.abs(Number(transaction.amount)) >= 300);
+  await applyPayerAttribution(supabase, userId, satuLagiRows, luciana.id, "Funded by Luciana via Deel → Julian Wise; Satu Lagi land purchase, excluded from monthly living expenses.");
+  await applyPayerAttribution(supabase, userId, lucianaLegalRows, luciana.id, "Paid by Luciana through Julian's Wise account; Satu Lagi legal cost, excluded from monthly living expenses.");
+  await applyPayerAttribution(supabase, userId, julianLegalRows, julian.id, "Paid by Julian; Satu Lagi legal cost, excluded from monthly living expenses.");
+}
+
+async function applyPayerAttribution(supabase: SupabaseClient, userId: string, transactions: WorkspaceTransaction[], paidById: string, attributionNote: string) {
+  for (const transaction of transactions) {
+    const metadata = { ...(transaction.metadata ?? {}), attributionNote };
+    const { error } = await supabase.from("transactions").update({ paid_by_id: paidById, metadata }).eq("user_id", userId).eq("id", transaction.id);
+    if (error) throw error;
+    transaction.metadata = metadata;
   }
 }
 
@@ -325,7 +383,7 @@ async function applyHospitalAlemanRule(supabase: SupabaseClient, userId: string,
 async function loadTransactions(supabase: SupabaseClient, userId: string) {
   const transactions: WorkspaceTransaction[] = [];
   for (let from = 0; ; from += 1000) {
-    const { data, error } = await supabase.from("transactions").select("id,fingerprint,occurred_at,description,amount,currency,kind,status,excluded_from_totals,fee_amount,category_id,merchant_name,merchant_key,merchant_country,travel_destination,beneficiary_scope,reimbursement_status,metadata,category:categories(name,life_area,is_essential,is_extraordinary,color),account_owner:people!transactions_account_owner_id_fkey(id,display_name,role),location_period:location_periods(id,starts_on,ends_on,status,period_type,trip_purpose,confidence,explanation,evidence,location:locations(id,name,country_code,country_name,default_currency))").eq("user_id", userId).order("occurred_at").range(from, from + 999);
+    const { data, error } = await supabase.from("transactions").select("id,fingerprint,occurred_at,description,amount,currency,original_currency,kind,status,excluded_from_totals,fee_amount,category_id,merchant_name,merchant_key,merchant_country,travel_destination,beneficiary_scope,reimbursement_status,metadata,category:categories(name,life_area,is_essential,is_extraordinary,color),account_owner:people!transactions_account_owner_id_fkey(id,display_name,role),location_period:location_periods(id,starts_on,ends_on,status,period_type,trip_purpose,confidence,explanation,evidence,location:locations(id,name,country_code,country_name,default_currency))").eq("user_id", userId).order("occurred_at").range(from, from + 999);
     if (error) throw error;
     transactions.push(...(data ?? []).map((row) => ({ ...row, category: first(row.category), account: null } as unknown as WorkspaceTransaction)));
     if (!data || data.length < 1000) break;

@@ -39,6 +39,10 @@ export function uniqueByFingerprint<T extends { fingerprint?: string | null }>(r
   });
 }
 
+export function deduplicateTransactionRows<T extends FingerprintedRow>(rows: T[]): T[] {
+  return markDuplicateFingerprints(rows).filter((row) => !isRuntimeDuplicate(row));
+}
+
 export function isRuntimeDuplicate(row: { metadata?: Record<string, unknown> }): boolean {
   return row.metadata?.isDuplicate === true;
 }

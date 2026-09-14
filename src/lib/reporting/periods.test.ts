@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { completedMonthKeys, previousComparableRange, rangeForPreset } from "./periods";
+import { completedMonthKeys, previousComparableRange, rangeForMonth, rangeForPreset } from "./periods";
 
 describe("reporting periods", () => {
-  it("resolves current, previous, and year-to-date periods", () => {
+  it("resolves the dashboard presets and custom months", () => {
     expect(rangeForPreset("current_month", "2026-09-13")).toEqual({ from: "2026-09-01", to: "2026-09-13" });
-    expect(rangeForPreset("previous_month", "2026-09-13")).toEqual({ from: "2026-08-01", to: "2026-08-31" });
     expect(rangeForPreset("ytd", "2026-09-13")).toEqual({ from: "2026-01-01", to: "2026-09-13" });
+    expect(rangeForPreset("last_year", "2026-09-13")).toEqual({ from: "2025-01-01", to: "2025-12-31" });
+    expect(rangeForPreset("all_records", "2026-09-13", "2024-05-02")).toEqual({ from: "2024-05-02", to: "2026-09-13" });
+    expect(rangeForMonth("2026-08", "2026-09-13")).toEqual({ from: "2026-08-01", to: "2026-08-31" });
+    expect(rangeForMonth("2026-09", "2026-09-13")).toEqual({ from: "2026-09-01", to: "2026-09-13" });
   });
 
   it("averages only complete calendar months inside a custom range", () => {

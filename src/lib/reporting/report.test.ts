@@ -40,6 +40,15 @@ describe("traceable USD spending reports", () => {
     expect(report.monthly.map((month) => [month.month, month.amount, month.normalizedAmount])).toEqual([["2026-06", 0, 115], ["2026-07", 240, 125]]);
   });
 
+  it("shows the full amount paid in personal and shared classifications", () => {
+    const personal = expense("personal", "2026-03-02", "-100");
+    const shared = { ...expense("shared", "2026-03-03", "-240"), beneficiary_scope: "shared" as const };
+    const report = buildSpendingReport([personal, shared], { from: "2026-03-01", to: "2026-03-31" }, "2026-09-13");
+    expect(report.personal).toEqual({ amount: 100, transactionIds: ["personal"] });
+    expect(report.household).toEqual({ amount: 240, transactionIds: ["shared"] });
+    expect(report.total.amount).toBe(340);
+  });
+
   it("reconciles the former USD 11,824.42 example to exact transactions", () => {
     const report = buildSpendingReport(demoWorkspace.transactions, { from: "2026-03-01", to: "2026-08-31" }, demoWorkspace.asOfDate);
     expect(report.total.amount).toBe(11824.42);

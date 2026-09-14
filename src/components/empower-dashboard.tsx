@@ -36,7 +36,7 @@ import { TransactionLedger } from "@/components/transaction-ledger";
 import { createEmptyWorkspace, type WorkspaceData } from "@/lib/workspace/demo";
 
 type View = "spending" | "income" | "transactions" | "questions" | "locations" | "recurring" | "cash" | "files" | "imports" | "investments" | "transfers" | "settings";
-type MoneyView = "luciana" | "shared" | "julian";
+export type MoneyView = "luciana" | "shared" | "julian";
 const moneyViews = new Set<MoneyView>(["luciana", "shared", "julian"]);
 const views = new Set<View>(["spending", "income", "transactions", "questions", "locations", "recurring", "cash", "files", "imports", "investments", "transfers", "settings"]);
 
@@ -208,7 +208,7 @@ export function EmpowerDashboard() {
           <button onClick={() => navigate("imports")} className="inline-flex h-11 items-center gap-2 rounded-xl bg-[var(--forest)] px-4 text-sm font-semibold text-white shadow-[0_8px_22px_rgba(33,78,69,0.18)]"><FileUp aria-hidden="true" className="size-4" /><span className="hidden sm:inline">Import statements</span><span className="sm:hidden">Import</span></button>
         </header>
         {notice ? <div role="status" className="mt-5 flex items-center justify-between gap-3 rounded-xl border border-[var(--line)] bg-[var(--surface)] px-4 py-3 text-sm"><span>{notice}</span><button aria-label="Dismiss message" onClick={() => setNotice("")}><X aria-hidden="true" className="size-4" /></button></div> : null}
-        {currentView === "spending" ? <ReportingWorkspace workspace={visibleWorkspace} loading={loading} openTransactions={openTransactions} openQuestions={() => navigate("questions")} openLocations={() => navigate("locations")} /> : null}
+        {currentView === "spending" ? <ReportingWorkspace workspace={visibleWorkspace} moneyView={moneyView} loading={loading} openTransactions={openTransactions} openQuestions={() => navigate("questions")} openLocations={() => navigate("locations")} /> : null}
         {currentView === "income" ? <IncomeSavings workspace={visibleWorkspace} openTransactions={openTransactions} /> : null}
         {currentView === "transactions" ? <><TransactionLedger workspace={visibleWorkspace} mutate={mutate} selection={selection} clearSelection={() => setSelection(null)} /><CategoryCreator disabled={workspace.mode !== "live"} mutate={mutate} /></> : null}
         {currentView === "questions" ? <QuestionsInbox workspace={visibleWorkspace} mutate={mutate} openTransactions={openTransactions} /> : null}
@@ -229,9 +229,10 @@ function profileWorkspace(workspace: WorkspaceData, view: MoneyView): WorkspaceD
   const visibleTransactions = workspace.transactions.filter((transaction) => {
     const beneficiary = transaction.beneficiary_scope ?? "personal";
     const ownerRole = transaction.account_owner?.role;
+    const payerRole = transaction.paid_by?.role ?? ownerRole;
     if (view === "shared") return beneficiary === "shared";
-    if (view === "julian") return beneficiary !== "shared" && ownerRole === "partner";
-    return beneficiary !== "shared" && (!ownerRole || ownerRole === "self");
+    if (view === "julian") return payerRole === "partner";
+    return !payerRole || payerRole === "self";
   });
   const transactionIds = new Set(visibleTransactions.map((transaction) => transaction.id));
   const transactionBatchIds = new Set(visibleTransactions.flatMap((transaction) => transaction.import_batch_id ? [transaction.import_batch_id] : []));

@@ -66,6 +66,15 @@ describe("provider adapters", () => {
     expect(transactions[2]).toMatchObject({ status: "failed", excludedFromTotals: true, warnings: [] });
   });
 
+  it("uses one stable Wise account label for every export", async () => {
+    const bytes = new TextEncoder().encode(await fixture("wise-transfer-history.csv"));
+
+    await expect(previewFile({ name: "transaction-history.csv", mimeType: "text/csv", bytes })).resolves.toMatchObject({
+      detection: { provider: "wise" },
+      summary: { accountLabel: "Wise account" },
+    });
+  });
+
   it("parses ARQ statement rows without treating wallet movements as income", async () => {
     const lines = (await fixture("arq-pdf-lines.txt")).split("\n").filter(Boolean);
     const adapter = new ArqPdfAdapter();

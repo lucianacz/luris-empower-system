@@ -24,6 +24,7 @@ describe("default expense categories", () => {
     expect(classify("SEVEN-ELEVEN PANAMA")).toBe("Groceries");
     expect(classify("CITYMALL monthly shop")).toBe("Groceries");
     expect(classify("STARBUCKS STORE")).toBe("Dining out");
+    expect(classify("PEDIDOS YA MARKETPLACE")).toBe("Dining out");
     expect(classify("FARMACITY 123")).toBe("Pharmacy");
     expect(classify("STEFANIE MENAJOVSKY")).toBe("Dentist");
     expect(classify("DANIEL JESICA SOLANGE")).toBe("Therapy");
@@ -50,6 +51,18 @@ describe("default expense categories", () => {
     expect(matchKnownMerchant("APPLE.COM/BILL", { amount: "-9.49", currency: "USD" })?.displayName).toBe("YouTube (via Apple)");
     expect(matchKnownMerchant("APPLE.COM/BILL", { amount: "-0.99", currency: "USD" })?.displayName).toBe("iCloud (via Apple)");
     expect(matchKnownMerchant("APPLE.COM/BILL", { amount: "-12.99", currency: "USD" })).toBeNull();
+    expect(matchKnownMerchant("APPLE.COM/BILL", { amount: "-9.49", currency: "USD" })?.beneficiaryScope).toBe("shared");
+    expect(matchKnownMerchant("SANSA")?.reimbursementStatus).toBe("settled");
+    expect(matchKnownMerchant("SANSA")?.excludedFromTotals).toBe(true);
+    expect(matchKnownMerchant("SERVICENTRO EL CONEJO")?.reimbursementStatus).toBe("settled");
+    expect(matchKnownMerchant("SERVICENTRO EL CONEJO")?.excludedFromTotals).toBe(true);
+    expect(matchKnownMerchant("Juan Pablo Vaghi (company)")?.kind).toBe("income");
+    expect(matchKnownMerchant("Jazak VeEmatz LL")?.kind).toBe("transfer");
+    expect(matchKnownMerchant("Jazak VeEmatz LL")?.excludedFromTotals).toBe(true);
+    expect(matchKnownMerchant("Baltodano Gomez Martin")?.categoryName).toBe("Satu Lagi Villa");
+    expect(matchKnownMerchant("Baltodano Gomez Martin")?.excludedFromTotals).toBe(true);
+    expect(matchKnownMerchant("Gutierrez Gonzalez Kaily Vanessa")?.categoryName).toBe("Satu Lagi Villa");
+    expect(matchKnownMerchant("Uriel Daian")?.categoryName).toBe("Friends & social");
   });
 
   it("keeps the confirmed expense hierarchy explicit", () => {

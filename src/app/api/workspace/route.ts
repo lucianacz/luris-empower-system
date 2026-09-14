@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { buildSpendingSummary } from "@/lib/spending/summary";
 import { analyzeRecurring } from "@/lib/intelligence/recurring";
 import { inferLocationSuggestions } from "@/lib/locations/inference";
-import { markDuplicateFingerprints } from "@/lib/import/runtime-duplicates";
+import { deduplicateTransactionRows } from "@/lib/import/runtime-duplicates";
 import { cleanDescription } from "@/lib/import/normalize";
 import type { WorkspaceTransaction } from "@/lib/workspace/demo";
 import { currentFinanceDate } from "@/lib/dates/current-date";
@@ -97,7 +97,7 @@ async function loadTransactions(supabase: Awaited<ReturnType<typeof createClient
   const pageError = remainingPages.find((page) => page.error)?.error;
   if (pageError) throw pageError;
   const transactions = [firstPage, ...remainingPages].flatMap((page) => (page.data ?? []).map((transaction) => normalizeTransaction(transaction as Record<string, unknown>)));
-  return markDuplicateFingerprints(transactions);
+  return deduplicateTransactionRows(transactions);
 }
 
 function normalizeTransaction(value: Record<string, unknown>): WorkspaceTransaction {

@@ -70,7 +70,7 @@ export async function POST(request: Request) {
     }
 
     const institution = preview.detection.provider === "generic" ? "other" : preview.detection.provider;
-    const currency = preview.detection.provider === "deel" ? "USD" : preview.summary.currencies[0] ?? "USD";
+    const currency = ["deel", "wise"].includes(preview.detection.provider) ? "USD" : preview.summary.currencies[0] ?? "USD";
     let account: { id: string; coverage_start: string | null; coverage_end: string | null; last_transaction_at: string | null };
     if (existingBatch?.account_id) {
       const { data, error } = await supabase.from("financial_accounts").select("id,coverage_start,coverage_end,last_transaction_at").eq("id", existingBatch.account_id).eq("user_id", user.id).single();

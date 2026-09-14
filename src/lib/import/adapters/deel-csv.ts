@@ -50,13 +50,14 @@ export class DeelCsvAdapter implements ImportAdapter {
       const fee = Decimal.max(itemizedFees, inferredFee);
       const kind: TransactionKind = sourceType.includes("client_payment") ? "income" : sourceType.includes("withdraw") ? "transfer" : sourceType.includes("fee") ? "fee" : "unknown";
       const method = row["Withdraw Method Custom Name"] || row["Withdraw Method"];
+      const accountHolder = row["Withdraw Account Holder Name"]?.trim() || null;
       const warnings = status === "failed" ? ["Failed transaction retained for history and excluded from totals."] : kind === "unknown" ? ["Transaction type needs review."] : [];
 
       return [createTransaction({
         provider: "deel",
         sourceId: row.ID,
         occurredAt,
-        description: kind === "income" ? row.Client || row["Contract Name"] || "Client payment" : method ? `Withdrawal to ${method}` : "Deel balance movement",
+        description: kind === "income" ? row.Client || row["Contract Name"] || "Client payment" : method ? `Withdrawal to ${method}${accountHolder ? ` · ${accountHolder}` : ""}` : "Deel balance movement",
         amount,
         currency: row.Currency || "USD",
         originalAmount: transferred.isZero() ? null : transferred,
@@ -68,6 +69,9 @@ export class DeelCsvAdapter implements ImportAdapter {
         metadata: {
           withdrawMethod: row["Withdraw Method"] || null,
           withdrawMethodCustomName: row["Withdraw Method Custom Name"] || null,
+          withdrawAccountHolderName: accountHolder,
+          client: row.Client || null,
+          contractName: row["Contract Name"] || null,
           exchangeRate: row["Exchange Rate"] || null,
           traceId: row["Trace ID"] || null,
         },

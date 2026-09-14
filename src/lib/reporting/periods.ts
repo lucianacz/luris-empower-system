@@ -1,21 +1,23 @@
-export type DatePreset = "current_month" | "previous_month" | "ytd" | "custom";
+export type DatePreset = "current_month" | "custom_month" | "ytd" | "last_year" | "all_records" | "custom";
 
 export interface DateRange {
   from: string;
   to: string;
 }
 
-export function rangeForPreset(preset: Exclude<DatePreset, "custom">, today: string): DateRange {
+export function rangeForPreset(preset: Exclude<DatePreset, "custom" | "custom_month">, today: string, firstRecordDate = `${today.slice(0, 4)}-01-01`): DateRange {
   const current = parseDate(today);
   const year = current.getUTCFullYear();
   const month = current.getUTCMonth();
   if (preset === "current_month") return { from: isoDate(new Date(Date.UTC(year, month, 1))), to: today };
-  if (preset === "previous_month") {
-    const start = new Date(Date.UTC(year, month - 1, 1));
-    const end = new Date(Date.UTC(year, month, 0));
-    return { from: isoDate(start), to: isoDate(end) };
-  }
+  if (preset === "last_year") return { from: `${year - 1}-01-01`, to: `${year - 1}-12-31` };
+  if (preset === "all_records") return { from: firstRecordDate.slice(0, 10), to: today };
   return { from: `${year}-01-01`, to: today };
+}
+
+export function rangeForMonth(month: string, today: string): DateRange {
+  const lastDay = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0)).toISOString().slice(0, 10);
+  return { from: `${month}-01`, to: lastDay > today ? today : lastDay };
 }
 
 export function normalizeRange(range: DateRange): DateRange {

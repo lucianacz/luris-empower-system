@@ -3,21 +3,27 @@
 import { AlertTriangle, ArrowLeftRight, ArrowUpRight, CalendarDays, CircleDollarSign, MapPin, ReceiptText, Sparkles } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { OpenTransactions } from "@/components/finance-ui-types";
+import type { MoneyView } from "@/components/empower-dashboard";
 import { compareSpendingCategories, percentageChange, type SpendingCategoryComparison } from "@/lib/reporting/comparison";
 import { buildSpendingReport, type SpendingGroup, type SpendingReport, type TraceableAmount } from "@/lib/reporting/report";
-import { previousComparableRange, rangeForPreset, rangeLabel, type DatePreset, type DateRange } from "@/lib/reporting/periods";
+import { previousComparableRange, rangeForMonth, rangeForPreset, rangeLabel, type DatePreset, type DateRange } from "@/lib/reporting/periods";
 import type { WorkspaceData, WorkspaceTransaction } from "@/lib/workspace/demo";
 
-export function ReportingWorkspace({ workspace, loading, openTransactions, openQuestions, openLocations }: { workspace: WorkspaceData; loading: boolean; openTransactions: OpenTransactions; openQuestions: () => void; openLocations: () => void }) {
+export function ReportingWorkspace({ workspace, moneyView, loading, openTransactions, openQuestions, openLocations }: { workspace: WorkspaceData; moneyView: MoneyView; loading: boolean; openTransactions: OpenTransactions; openQuestions: () => void; openLocations: () => void }) {
   const today = workspace.asOfDate;
+  const availableMonths = useMemo(() => [...new Set(workspace.transactions.map((transaction) => transaction.occurred_at.slice(0, 7)))].sort().reverse(), [workspace.transactions]);
+  const firstRecordDate = useMemo(() => workspace.transactions.reduce((first, transaction) => transaction.occurred_at.slice(0, 10) < first ? transaction.occurred_at.slice(0, 10) : first, today), [today, workspace.transactions]);
   const [preset, setPreset] = useState<DatePreset>("ytd");
   const [range, setRange] = useState<DateRange>(() => rangeForPreset("ytd", today));
+  const [customMonth, setCustomMonth] = useState(today.slice(0, 7));
+  const [scope, setScope] = useState<"all" | "personal" | "shared">("all");
   const [comparisonEnabled, setComparisonEnabled] = useState(false);
   const [comparisonRange, setComparisonRange] = useState<DateRange>(() => previousComparableRange(rangeForPreset("ytd", today)));
   const [basis, setBasis] = useState<"cash" | "normalized">("cash");
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
-  const report = useMemo(() => buildSpendingReport(workspace.transactions, range, today), [range, today, workspace.transactions]);
-  const comparisonReport = useMemo(() => buildSpendingReport(workspace.transactions, comparisonRange, today), [comparisonRange, today, workspace.transactions]);
+  const reportingTransactions = useMemo(() => moneyView === "shared" || scope === "all" ? workspace.transactions : workspace.transactions.filter((transaction) => (transaction.beneficiary_scope ?? "personal") === scope), [moneyView, scope, workspace.transactions]);
+  const report = useMemo(() => buildSpendingReport(reportingTransactions, range, today), [range, reportingTransactions, today]);
+  const comparisonReport = useMemo(() => buildSpendingReport(reportingTransactions, comparisonRange, today), [comparisonRange, reportingTransactions, today]);
   const categoryComparison = useMemo(() => compareSpendingCategories(report, comparisonReport), [comparisonReport, report]);
   const categoryTabs = useMemo(() => {
     const tabs = report.categories.slice(0, 14);
@@ -34,34 +40,51 @@ export function ReportingWorkspace({ workspace, loading, openTransactions, openQ
   const maxCategory = Math.max(1, ...report.categories.map((category) => category.amount));
   const workTripRows = useMemo(() => {
     const workCountries = new Set(workspace.locationPeriods.filter((period) => period.status === "confirmed" && period.trip_purpose?.toLocaleLowerCase().includes("work")).map((period) => period.location.country_code).filter(Boolean));
-    return workspace.transactions.filter((transaction) => transaction.location_period?.status === "confirmed" && transaction.location_period.trip_purpose?.toLocaleLowerCase().includes("work") || Boolean(transaction.travel_destination && workCountries.has(transaction.travel_destination)));
-  }, [workspace.locationPeriods, workspace.transactions]);
+    return reportingTransactions.filter((transaction) => transaction.location_period?.status === "confirmed" && transaction.location_period.trip_purpose?.toLocaleLowerCase().includes("work") || Boolean(transaction.travel_destination && workCountries.has(transaction.travel_destination)));
+  }, [reportingTransactions, workspace.locationPeriods]);
   const workTrips = useMemo(() => buildSpendingReport(workTripRows, range, today), [range, today, workTripRows]);
 
   const updatePrimaryRange = (next: DateRange) => {
     setRange(next);
     setComparisonRange(previousComparableRange(next));
   };
-  const selectPreset = (value: Exclude<DatePreset, "custom">) => { setPreset(value); updatePrimaryRange(rangeForPreset(value, today)); };
-  const selectMonth = (month: string) => {
-    const lastDay = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0)).toISOString().slice(0, 10);
-    setPreset("custom");
-    updatePrimaryRange({ from: `${month}-01`, to: earlier(lastDay, today) });
+  const selectPreset = (value: Exclude<DatePreset, "custom" | "custom_month">) => { setPreset(value); updatePrimaryRange(rangeForPreset(value, today, firstRecordDate)); };
+  const selectCustomMonth = (month: string) => {
+    setCustomMonth(month);
+    setPreset("custom_month");
+    updatePrimaryRange(rangeForMonth(month, today));
     setSelectedCategoryId(null);
+  };
+  const selectMonth = (month: string) => {
+    selectCustomMonth(month);
+  };
+  const updateComparisonPrimary = (next: DateRange) => {
+    setPreset("custom");
+    setRange(next);
+  };
+  const swapComparisonRanges = () => {
+    setRange(comparisonRange);
+    setComparisonRange(range);
+    setPreset("custom");
   };
   const open = (title: string, amount: TraceableAmount) => openTransactions({ title, transactionIds: amount.transactionIds, range: report.range });
   return <section className="mt-6 space-y-5">
     <div className="rounded-[22px] border border-[var(--line)] bg-[var(--surface)] p-4 shadow-[0_16px_44px_rgba(37,45,42,0.04)] sm:p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap gap-1 rounded-xl bg-[var(--paper)] p-1" aria-label="Reporting period">
-          {([['current_month', 'Current month'], ['previous_month', 'Previous month'], ['ytd', 'Year to date']] as const).map(([value, label]) => <button key={value} onClick={() => selectPreset(value)} className={`rounded-lg px-3 py-2 text-xs font-semibold ${preset === value ? "bg-[var(--forest)] text-white" : "text-[var(--muted)]"}`}>{label}</button>)}
-          <button onClick={() => setPreset("custom")} className={`rounded-lg px-3 py-2 text-xs font-semibold ${preset === "custom" ? "bg-[var(--forest)] text-white" : "text-[var(--muted)]"}`}>Custom</button>
+        <div className="flex flex-wrap items-center gap-1 rounded-xl bg-[var(--paper)] p-1" aria-label="Reporting period">
+          <button onClick={() => selectPreset("current_month")} className={`rounded-lg px-3 py-2 text-xs font-semibold ${preset === "current_month" ? "bg-[var(--forest)] text-white" : "text-[var(--muted)]"}`}>Current month</button>
+          <label className={`flex items-center rounded-lg px-2 text-xs font-semibold ${preset === "custom_month" ? "bg-[var(--forest)] text-white" : "text-[var(--muted)]"}`}><span className="sr-only">Custom month</span><select aria-label="Custom month" value={customMonth} onChange={(event) => selectCustomMonth(event.target.value)} onClick={() => { if (preset !== "custom_month") selectCustomMonth(customMonth); }} className="h-8 bg-transparent pr-1 font-semibold outline-none"><option value={customMonth}>Custom month · {formatMonth(customMonth)}</option>{availableMonths.filter((month) => month !== customMonth).map((month) => <option key={month} value={month}>{formatMonth(month)}</option>)}</select></label>
+          <button onClick={() => selectPreset("ytd")} className={`rounded-lg px-3 py-2 text-xs font-semibold ${preset === "ytd" ? "bg-[var(--forest)] text-white" : "text-[var(--muted)]"}`}>Year to date</button>
+          <button onClick={() => selectPreset("last_year")} className={`rounded-lg px-3 py-2 text-xs font-semibold ${preset === "last_year" ? "bg-[var(--forest)] text-white" : "text-[var(--muted)]"}`}>Last year</button>
+          <button onClick={() => selectPreset("all_records")} className={`rounded-lg px-3 py-2 text-xs font-semibold ${preset === "all_records" ? "bg-[var(--forest)] text-white" : "text-[var(--muted)]"}`}>All records</button>
+          <button onClick={() => setPreset("custom")} className={`rounded-lg px-3 py-2 text-xs font-semibold ${preset === "custom" ? "bg-[var(--forest)] text-white" : "text-[var(--muted)]"}`}>Custom dates</button>
         </div>
         <div className="flex items-center gap-2 text-xs font-semibold text-[var(--muted)]"><CircleDollarSign aria-hidden="true" className="size-4 text-[var(--forest)]" />Reporting currency: <strong className="text-[var(--ink)]">USD</strong></div>
       </div>
       {preset === "custom" ? <div className="mt-4 flex flex-wrap gap-3"><DateField label="From" value={range.from} onChange={(from) => updatePrimaryRange({ ...range, from })} /><DateField label="To" value={range.to} max={today} onChange={(to) => updatePrimaryRange({ ...range, to })} /></div> : null}
+      {moneyView !== "shared" ? <div className="mt-4 flex flex-wrap items-center gap-2 rounded-xl border border-[var(--line)] bg-white p-2" aria-label="Personal or shared spending"><span className="px-2 text-xs font-semibold text-[var(--muted)]">What did {moneyView === "luciana" ? "Luciana" : "Julian"} pay?</span>{([['all', 'All spending paid'], ['personal', 'Personal only'], ['shared', 'Shared household only']] as const).map(([value, label]) => <button key={value} type="button" onClick={() => setScope(value)} className={`rounded-lg px-3 py-2 text-xs font-semibold ${scope === value ? "bg-[var(--forest-soft)] text-[var(--forest)]" : "text-[var(--muted)]"}`}>{label}</button>)}</div> : null}
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[var(--line)] pt-4 text-sm"><p><strong>{rangeLabel(report.range)}</strong><span className="ml-2 text-[var(--muted)]">{report.transactionCount} included transactions</span></p><div className="flex flex-wrap items-center gap-2"><button type="button" onClick={() => setComparisonEnabled((current) => !current)} aria-pressed={comparisonEnabled} className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold ${comparisonEnabled ? "border-[var(--forest)] bg-[var(--forest)] text-white" : "border-[var(--line)] text-[var(--forest)]"}`}><ArrowLeftRight aria-hidden="true" className="size-3.5" />Compare periods</button><div className="flex rounded-xl border border-[var(--line)] p-1" aria-label="Reporting basis"><button onClick={() => setBasis("cash")} className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${basis === "cash" ? "bg-[var(--forest-soft)] text-[var(--forest)]" : "text-[var(--muted)]"}`}>Actual cash flow</button><button onClick={() => setBasis("normalized")} className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${basis === "normalized" ? "bg-[var(--forest-soft)] text-[var(--forest)]" : "text-[var(--muted)]"}`}>Monthly normalized cost</button></div></div></div>
-      {comparisonEnabled ? <div className="mt-4 flex flex-wrap items-center gap-3 rounded-xl bg-[var(--paper)] p-3"><span className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--muted)]">Compare with</span><DateField label="From" value={comparisonRange.from} max={today} onChange={(from) => setComparisonRange((current) => ({ ...current, from }))} /><DateField label="To" value={comparisonRange.to} max={today} onChange={(to) => setComparisonRange((current) => ({ ...current, to }))} /><button type="button" onClick={() => setComparisonRange(previousComparableRange(report.range))} className="rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-xs font-semibold text-[var(--forest)]">Previous equal period</button></div> : null}
+      {comparisonEnabled ? <div className="mt-4 grid gap-3 rounded-xl bg-[var(--paper)] p-3 lg:grid-cols-2"><div className="rounded-xl border border-[var(--forest)] bg-white p-3"><span className="mb-3 block text-xs font-semibold uppercase tracking-[0.08em] text-[var(--forest)]">Period A · primary</span><div className="flex flex-wrap gap-3"><DateField label="From" value={range.from} max={today} onChange={(from) => updateComparisonPrimary({ ...range, from })} /><DateField label="To" value={range.to} max={today} onChange={(to) => updateComparisonPrimary({ ...range, to })} /></div></div><div className="rounded-xl border border-[var(--line)] bg-white p-3"><span className="mb-3 block text-xs font-semibold uppercase tracking-[0.08em] text-[var(--muted)]">Period B · compare against</span><div className="flex flex-wrap gap-3"><DateField label="From" value={comparisonRange.from} max={today} onChange={(from) => setComparisonRange((current) => ({ ...current, from }))} /><DateField label="To" value={comparisonRange.to} max={today} onChange={(to) => setComparisonRange((current) => ({ ...current, to }))} /></div></div><div className="flex flex-wrap gap-2 lg:col-span-2"><button type="button" onClick={() => setComparisonRange(previousComparableRange(report.range))} className="rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-xs font-semibold text-[var(--forest)]">Use previous equal period for B</button><button type="button" onClick={swapComparisonRanges} className="rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-xs font-semibold text-[var(--forest)]">Swap A and B</button></div></div> : null}
     </div>
 
     {workspace.mode !== "live" ? <div className="rounded-xl border border-[#e3bf9f] bg-[#fbefe4] px-4 py-3 text-sm text-[#74411f]"><strong>No financial data loaded.</strong> Sign in to open your private imported transactions.</div> : null}
@@ -85,7 +108,7 @@ export function ReportingWorkspace({ workspace, loading, openTransactions, openQ
 
     <div className="grid gap-5 lg:grid-cols-3">
       <SplitCard title="Life expenses" left={{ label: "Essential", ...report.essential }} right={{ label: "Flexible", ...report.flexible }} range={report.range} openTransactions={openTransactions} />
-      <SplitCard title="Personal and shared" left={{ label: "Personal", ...report.personal }} right={{ label: "Household", ...report.household }} range={report.range} openTransactions={openTransactions} />
+      <SplitCard title="Personal and shared" left={{ label: "Personal only", ...report.personal }} right={{ label: "Shared household paid", ...report.household }} range={report.range} openTransactions={openTransactions} />
       <button onClick={() => open("Flights and extraordinary costs", report.extraordinary)} className="rounded-[22px] border border-[var(--line)] bg-[var(--surface)] p-5 text-left"><p className="text-sm font-semibold">Flights and extraordinary costs</p><p className="mt-3 text-2xl font-semibold">{money(report.extraordinary.amount)}</p><p className="mt-1 text-xs text-[var(--muted)]">Excluded from normal location averages · {report.extraordinary.transactionIds.length} transactions</p></button>
     </div>
 
