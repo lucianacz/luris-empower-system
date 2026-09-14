@@ -29,10 +29,13 @@ The current MVP is built around the supplied Deel, ARQ, Brubank, Payoneer, and A
 - Traceable USD reporting for current month, previous month, year to date, and custom ranges
 - Income and approximate-savings reporting with source-payment drill-down
 - Editable personal and shared savings goals with monthly targets, progress, and equal-versus-income-proportional planning guides
+- Private affordability planner using current cash, completed-month costs, income assumptions, goals, and an adjustable safety reserve
+- Dated account-balance snapshots, including separately owned Deel balances
 - Monthly cash-flow and normalized service-month views with completed-month averages
 - Click-through totals, charts, categories, merchants, locations, insights, and recurring costs
 - Dynamic location suggestions based on repeated evidence, with confirm/reject/edit/merge/split workflows
 - Spending-by-location comparisons with full-month averages, partial months, and flights separated
+- Owner-specific recurring-payment cycles so two people using the same subscription are never treated as one obligation
 - Proactive recurring-payment, missing-month, double-payment, and uncategorized-merchant questions
 - Recurring-expense details with original currency, historical USD value, and covered-month allocations
 - Configurable historical ARS methodology and dated exchange-rate provenance
@@ -93,12 +96,17 @@ npx supabase db push --linked --skip-vault
 The dry run must list only the expected pending migrations. Never use
 `supabase db reset --linked` against a project that contains imported data.
 
-In Supabase Authentication, enable email sign-in and add these redirect URLs:
+In Supabase Authentication, enable email/password sign-in and add these redirect URLs:
 
 ```text
 http://localhost:3000/auth/callback
 https://YOUR_VERCEL_DOMAIN/auth/callback
 ```
+
+Keep public email sign-up disabled. Create or invite approved users from the
+Supabase dashboard, then use **Create or reset password** on the login screen.
+The checked-in Auth policy requires at least 12 characters with uppercase,
+lowercase, digits, and symbols.
 
 Start the app:
 
@@ -106,7 +114,7 @@ Start the app:
 npm run dev
 ```
 
-Open `http://localhost:3000`. Statement previews work without Supabase. Confirmation, history, mappings, and rollback require a signed-in Supabase user.
+Open `http://localhost:3000`. The entire workspace redirects to the password screen until a Supabase user is signed in.
 
 ## Database and security
 
@@ -123,6 +131,7 @@ The initial and additive reporting migrations in `supabase/migrations/` create:
 - historical exchange-rate provenance, USD reporting values, and service-month allocations;
 - evidence-linked insights and grouped proactive questions;
 - personal and shared savings goals with targets, deadlines, and manually confirmed saved balances;
+- dated cash-balance snapshots and person-specific planning assumptions;
 - a private `statement-files` Storage bucket.
 
 Every user-owned table has Row Level Security enabled. Policies compare `auth.uid()` with the row owner, and statement object paths begin with that user ID. Import routes verify the authenticated user again on the server.
@@ -139,7 +148,7 @@ Rollback removes transactions created by the selected batch and marks the batch 
 6. The app stores the original file, imports only new rows, opens questions for uncertainty, and quietly rebuilds transfer suggestions.
 7. Continue through the queue until every selected file is confirmed or safely skipped as a duplicate.
 
-The Spending view then leads with monthly expenses, categories, essential and flexible costs, and personal or household shares. The financial-profile selector keeps the same tabs while switching between Luciana, shared household spending, and Julian. The Income & savings tab compares traceable income with genuine spending while keeping owned-account and investment movements separate. The Savings plan tab stores editable goals and uses completed income months for an optional income-proportional household guide.
+The Spending view then leads with monthly expenses, categories, essential and flexible costs, and personal or household shares. The financial-profile selector keeps the same tabs while switching between Luciana, shared household spending, and Julian. The Income & savings tab compares traceable income with genuine spending while keeping owned-account and investment movements separate. The Savings plan tab stores editable goals and uses completed income months for an optional income-proportional household guide. The Financial planner answers affordability questions with a traceable local calculation; it does not send transaction history to an external AI service.
 
 When a transaction is categorized, matching historical descriptions are categorized at the same time and an exact-match rule is saved for future imports. Ambiguous person-to-person payments remain in the uncategorized queue for review.
 
@@ -170,7 +179,7 @@ The current automated suite covers provider parsing, conservative classification
 
 ## Deploy to Vercel
 
-Production is connected to the GitHub `main` branch at [luris-empower-system.vercel.app](https://luris-empower-system.vercel.app). A successful push to `main` creates a new production deployment.
+Production is connected to the GitHub `main` branch at [luris-empower-system.vercel.app](https://luris-empower-system.vercel.app). It is a dedicated Vercel project named `luris-empower-system`, separate from every other Vercel project in the account. A successful push to `main` creates a new production deployment.
 
 The Vercel project has these public environment values configured:
 
@@ -180,7 +189,7 @@ The Vercel project has these public environment values configured:
 
 Supabase Auth uses the production origin as its Site URL. Its redirect allow-list contains the exact production callback, the localhost callback, and the Vercel preview-domain pattern. Keep the checked-in `supabase/config.toml` aligned with those origins when adding a custom domain.
 
-After deployment, the app is available from any computer at the Vercel HTTPS URL. A separate partner login that can read the same household workspace still requires an explicit household-membership permission; do not share Supabase session links or credentials as a shortcut. The current person/payer/split model is ready for Julian's statements without changing the reporting tabs.
+After deployment, the login screen is available from any computer at the Vercel HTTPS URL, while the financial workspace remains inaccessible without an approved Supabase email/password account. A separate partner login that can read the same household workspace still requires an explicit household-membership permission; do not share Supabase session links or credentials as a shortcut. The current person/payer/split model is ready for Julian's statements without changing the reporting tabs.
 
 The statement preview and commit handlers use the Node.js runtime and set bounded file sizes and execution durations suitable for Vercel. Supabase provides the database and object storage, so no persistent filesystem is assumed.
 
