@@ -214,7 +214,7 @@ export function EmpowerDashboard() {
           <button onClick={() => navigate("imports")} className="inline-flex h-11 items-center gap-2 rounded-xl bg-[var(--forest)] px-4 text-sm font-semibold text-white shadow-[0_8px_22px_rgba(33,78,69,0.18)]"><FileUp aria-hidden="true" className="size-4" /><span className="hidden sm:inline">Import statements</span><span className="sm:hidden">Import</span></button>
         </header>
         {notice ? <div role="status" className="mt-5 flex items-center justify-between gap-3 rounded-xl border border-[var(--line)] bg-[var(--surface)] px-4 py-3 text-sm"><span>{notice}</span><button aria-label="Dismiss message" onClick={() => setNotice("")}><X aria-hidden="true" className="size-4" /></button></div> : null}
-        {currentView === "spending" ? <ReportingWorkspace workspace={visibleWorkspace} moneyView={moneyView} openTransactions={openTransactions} openLocations={() => navigate("locations")} /> : null}
+        {currentView === "spending" ? <ReportingWorkspace workspace={visibleWorkspace} moneyView={moneyView} openTransactions={openTransactions} /> : null}
         {currentView === "income" ? <IncomeSavings workspace={moneyView === "shared" ? systemWorkspace : visibleWorkspace} combinedHousehold={moneyView === "shared"} openTransactions={openTransactions} /> : null}
         {currentView === "property" ? <PropertyProject workspace={visibleWorkspace} profile={moneyView} openTransactions={openTransactions} /> : null}
         {currentView === "transactions" ? <><TransactionLedger workspace={transactionWorkspace} mutate={mutate} selection={selection} clearSelection={() => setSelection(null)} /><CategoryCreator disabled={workspace.mode !== "live"} mutate={mutate} /></> : null}
