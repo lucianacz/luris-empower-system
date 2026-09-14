@@ -9,7 +9,7 @@ import { createClient } from "@/lib/supabase/server";
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
-const profileVersion = "confirmed-profile-2026-09-14-v12";
+const profileVersion = "confirmed-profile-2026-09-14-v13";
 const periods = [
   { name: "Argentina", countryCode: "AR", countryName: "Argentina", currency: "ARS", startsOn: "2025-12-23", endsOn: "2026-01-09", periodType: "temporary_stay", tripPurpose: null },
   { name: "Mexico", countryCode: "MX", countryName: "Mexico", currency: "MXN", startsOn: "2026-01-10", endsOn: "2026-03-06", periodType: "temporary_stay", tripPurpose: null },
@@ -66,6 +66,7 @@ export async function POST() {
   const { error: clearLocationError } = await supabase.from("transactions").update({ location_period_id: null }).eq("user_id", user.id).eq("account_owner_id", luciana.id).gte("occurred_at", "2026-01-10T00:00:00Z");
   if (clearLocationError) return Response.json({ error: clearLocationError.message }, { status: 422 });
 
+  let lucianaCanadaWorkPeriodId: string | null = null;
   for (const period of periods) {
     const { data: location, error: locationError } = await supabase.from("locations").upsert({ user_id: user.id, name: period.name, country_code: period.countryCode, country_name: period.countryName, default_currency: period.currency }, { onConflict: "user_id,country_code,name" }).select("id").single();
     if (locationError) return Response.json({ error: locationError.message }, { status: 422 });
@@ -78,6 +79,7 @@ export async function POST() {
       ? await supabase.from("location_periods").update(periodPayload).eq("user_id", user.id).eq("id", exactPeriods[0].id).select("id").single()
       : await supabase.from("location_periods").insert(periodPayload).select("id").single();
     if (periodResult.error) return Response.json({ error: periodResult.error.message }, { status: 422 });
+    if (period.countryCode === "CA" && period.tripPurpose === "work") lucianaCanadaWorkPeriodId = periodResult.data.id;
     let transactionQuery = supabase.from("transactions").update({ location_period_id: periodResult.data.id }).eq("user_id", user.id).eq("account_owner_id", luciana.id).gte("occurred_at", `${period.startsOn}T00:00:00Z`);
     if (period.endsOn) transactionQuery = transactionQuery.lte("occurred_at", `${period.endsOn}T23:59:59Z`);
     const { error: transactionError } = await transactionQuery;
@@ -86,6 +88,17 @@ export async function POST() {
 
   const { error: canadaTagError } = await supabase.from("transactions").update({ travel_destination: "CA" }).eq("user_id", user.id).eq("account_owner_id", luciana.id).or("merchant_country.eq.CA,original_currency.eq.CAD").lte("occurred_at", "2026-07-24T23:59:59Z");
   if (canadaTagError) return Response.json({ error: canadaTagError.message }, { status: 422 });
+  if (lucianaCanadaWorkPeriodId) {
+    const { error: clarenceParkError } = await supabase.from("transactions").update({
+      location_period_id: lucianaCanadaWorkPeriodId,
+      merchant_country: "CA",
+      travel_destination: "CA",
+      travel_date: "2026-07-18",
+      beneficiary_scope: "personal",
+      transaction_label: "Canada work trip · hotel",
+    }).eq("user_id", user.id).eq("account_owner_id", luciana.id).or("description.ilike.%THE CLARENCE PARK%,description.ilike.%CLARENCE CASTLE INC%,merchant_name.ilike.%THE CLARENCE PARK%");
+    if (clarenceParkError) return Response.json({ error: clarenceParkError.message }, { status: 422 });
+  }
 
   const trips = await syncJulianConfirmedTrips(supabase, user.id);
   const cash = await syncConfirmedCashExpenses(supabase, user.id);

@@ -170,11 +170,15 @@ The current automated suite covers provider parsing, conservative classification
 
 ## Deploy to Vercel
 
-1. Push this repository to GitHub.
-2. Import the repository into Vercel as a Next.js project.
-3. Add the three public environment values from `.env.local` to the Vercel project. Set `NEXT_PUBLIC_SITE_URL` to the final HTTPS origin.
-4. Add the production `/auth/callback` URL to Supabase Authentication redirect URLs.
-5. Deploy.
+Production is connected to the GitHub `main` branch at [luris-empower-system.vercel.app](https://luris-empower-system.vercel.app). A successful push to `main` creates a new production deployment.
+
+The Vercel project has these public environment values configured:
+
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
+- `NEXT_PUBLIC_SITE_URL=https://luris-empower-system.vercel.app`
+
+Supabase Auth uses the production origin as its Site URL. Its redirect allow-list contains the exact production callback, the localhost callback, and the Vercel preview-domain pattern. Keep the checked-in `supabase/config.toml` aligned with those origins when adding a custom domain.
 
 After deployment, the app is available from any computer at the Vercel HTTPS URL. A separate partner login that can read the same household workspace still requires an explicit household-membership permission; do not share Supabase session links or credentials as a shortcut. The current person/payer/split model is ready for Julian's statements without changing the reporting tabs.
 

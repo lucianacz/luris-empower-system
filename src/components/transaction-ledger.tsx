@@ -14,9 +14,11 @@ export function TransactionLedger({ workspace, mutate, selection, clearSelection
   const [status, setStatus] = useState("posted");
   const [scope, setScope] = useState("all");
   const [savingScopeId, setSavingScopeId] = useState<string | null>(null);
+  const [savingLocationId, setSavingLocationId] = useState<string | null>(null);
   const selectedIds = useMemo(() => selection ? new Set(selection.transactionIds) : null, [selection]);
   const months = useMemo(() => [...new Set(workspace.transactions.map((transaction) => transaction.occurred_at.slice(0, 7)))].sort().reverse(), [workspace.transactions]);
   const expenseCategoryOptions = useMemo(() => categoryOptions(workspace.categories, "expense"), [workspace.categories]);
+  const locationOptions = useMemo(() => countryOptions(workspace), [workspace]);
   const rows = useMemo(() => workspace.transactions.filter((transaction) => {
     if (selectedIds && !selectedIds.has(transaction.id)) return false;
     if (kind !== "all" && transaction.kind !== kind) return false;
@@ -53,6 +55,21 @@ export function TransactionLedger({ workspace, mutate, selection, clearSelection
       window.alert(messageOf(error));
     }
   };
+  const saveLocation = async (transaction: WorkspaceTransaction, merchantCountry: string | null) => {
+    setSavingLocationId(transaction.id);
+    try {
+      const period = merchantCountry ? matchingConfirmedPeriod(transaction, merchantCountry, workspace.locationPeriods) : null;
+      await mutate("/api/transactions/" + transaction.id, "PATCH", {
+        merchantCountry,
+        locationPeriodId: period?.id ?? null,
+        ...(merchantCountry ? {} : { travelOrigin: null, travelDestination: null, travelDate: null }),
+      });
+    } catch (error) {
+      window.alert(messageOf(error));
+    } finally {
+      setSavingLocationId(null);
+    }
+  };
 
   return <section className="mt-7 space-y-4">
     <div className="rounded-[20px] border border-[var(--line)] bg-[var(--surface)] p-4">
@@ -78,7 +95,7 @@ export function TransactionLedger({ workspace, mutate, selection, clearSelection
       <table className="w-full min-w-[1280px] text-left text-sm">
         <thead className="bg-[var(--paper)] text-[11px] uppercase tracking-[0.08em] text-[var(--muted)]"><tr><th className="px-4 py-3">Payment date</th><th className="px-4 py-3">Merchant or description</th><th className="px-4 py-3">Category</th><th className="px-4 py-3">Location</th><th className="px-4 py-3">Original amount</th><th className="px-4 py-3">USD reporting value</th><th className="px-4 py-3">Service month</th><th className="px-4 py-3">Personal/shared</th></tr></thead>
         <tbody className="divide-y divide-[var(--line)]">
-          {rows.map((transaction) => <TransactionRow key={transaction.id} transaction={transaction} categoryOptions={expenseCategoryOptions} live={live} savingScope={savingScopeId === transaction.id} saveCategory={saveCategory} saveScope={saveScope} saveLabel={saveLabel} />)}
+          {rows.map((transaction) => <TransactionRow key={transaction.id} transaction={transaction} categoryOptions={expenseCategoryOptions} locationOptions={locationOptions} live={live} savingScope={savingScopeId === transaction.id} savingLocation={savingLocationId === transaction.id} saveCategory={saveCategory} saveScope={saveScope} saveLabel={saveLabel} saveLocation={saveLocation} />)}
           {!rows.length ? <tr><td colSpan={8} className="p-8 text-center text-sm text-[var(--muted)]">No transactions match this evidence filter.</td></tr> : null}
         </tbody>
       </table>
@@ -86,7 +103,7 @@ export function TransactionLedger({ workspace, mutate, selection, clearSelection
   </section>;
 }
 
-function TransactionRow({ transaction, categoryOptions: options, live, savingScope, saveCategory, saveScope, saveLabel }: { transaction: WorkspaceTransaction; categoryOptions: ReturnType<typeof categoryOptions>; live: boolean; savingScope: boolean; saveCategory: (id: string, categoryId: string) => Promise<void>; saveScope: (id: string, scope: "personal" | "shared") => Promise<void>; saveLabel: (id: string, label: string) => Promise<void> }) {
+function TransactionRow({ transaction, categoryOptions: options, locationOptions, live, savingScope, savingLocation, saveCategory, saveScope, saveLabel, saveLocation }: { transaction: WorkspaceTransaction; categoryOptions: ReturnType<typeof categoryOptions>; locationOptions: Array<{ code: string; label: string }>; live: boolean; savingScope: boolean; savingLocation: boolean; saveCategory: (id: string, categoryId: string) => Promise<void>; saveScope: (id: string, scope: "personal" | "shared") => Promise<void>; saveLabel: (id: string, label: string) => Promise<void>; saveLocation: (transaction: WorkspaceTransaction, countryCode: string | null) => Promise<void> }) {
   const duplicate = transaction.metadata?.isDuplicate === true;
   const crossedOut = Number(transaction.amount) === 0 || ["failed", "reversed"].includes(transaction.status);
   const reportingAmount = duplicate || crossedOut ? null : transaction.currency === "USD" ? Number(transaction.amount) : transaction.reporting_value ? Number(transaction.reporting_value.reporting_amount) : null;
@@ -114,7 +131,19 @@ function TransactionRow({ transaction, categoryOptions: options, live, savingSco
       {transaction.reimbursement_status && transaction.reimbursement_status !== "none" ? <span className="mt-1 ml-1 inline-block rounded-full bg-[var(--amber-soft)] px-2 py-0.5 text-[10px]">Reimbursement {transaction.reimbursement_status}</span> : null}
     </td>
     <td className="px-4 py-3"><select aria-label={"Category for " + transaction.description} disabled={!live} value={transaction.category_id ?? ""} onChange={(event) => void saveCategory(transaction.id, event.target.value)} className="h-9 max-w-52 rounded-lg border border-[var(--line)] bg-white px-2 text-xs"><option value="">Uncategorized</option>{options.map((item) => <option key={item.category.id} value={item.category.id}>{item.label}</option>)}</select></td>
-    <td className="px-4 py-3"><span className="block text-xs font-medium">{transaction.location_period?.location.country_name || transaction.merchant_country || "Not confirmed"}</span><span className="mt-1 block text-[10px] text-[var(--muted)]">{transaction.merchant_city || transaction.location_period?.period_type.replaceAll("_", " ") || "No location period"}</span></td>
+    <td className="px-4 py-3">
+      <select
+        aria-label={"Country for " + transaction.description}
+        disabled={!live || savingLocation}
+        value={transaction.merchant_country?.toUpperCase() ?? transaction.location_period?.location.country_code?.toUpperCase() ?? ""}
+        onChange={(event) => void saveLocation(transaction, event.target.value || null)}
+        className="h-9 max-w-52 rounded-lg border border-[var(--line)] bg-white px-2 text-xs disabled:opacity-50"
+      >
+        <option value="">Not trip-related / not applicable</option>
+        {locationOptions.map((option) => <option key={option.code} value={option.code}>{option.label}</option>)}
+      </select>
+      <span className="mt-1 block max-w-52 text-[10px] text-[var(--muted)]">{savingLocation ? "Saving…" : locationDetail(transaction)}</span>
+    </td>
     <td className={"whitespace-nowrap px-4 py-3 font-mono text-xs" + crossedClass}>{money(originalAmount.amount, originalAmount.currency)}</td>
     <td className="px-4 py-3"><span className={"block whitespace-nowrap font-mono text-xs" + crossedClass}>{reportingAmount == null ? "Not included" : money(reportingAmount, "USD")}</span><span className="mt-1 block max-w-48 text-[10px] leading-4 text-[var(--muted)]">{source}{transaction.reporting_value ? " · rate " + transaction.reporting_value.rate_to_reporting : ""}</span></td>
     <td className="px-4 py-3">{allocations.length ? allocations.map((allocation) => <span key={allocation.id} className="mb-1 block whitespace-nowrap text-xs">{allocation.service_month.slice(0, 7)} · {money(allocation.amount, allocation.currency)}{allocation.is_estimated ? " est." : ""}</span>) : <span className="text-xs text-[var(--muted)]">Same as payment month</span>}</td>
@@ -124,6 +153,36 @@ function TransactionRow({ transaction, categoryOptions: options, live, savingSco
 
 function FilterSelect({ label, value, onChange, options, compact = false }: { label: string; value: string; onChange: (value: string) => void; options: Array<readonly [string, string]>; compact?: boolean }) {
   return <label className={compact ? "min-w-52" : ""}><span className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)]">{label}</span><select aria-label={label} value={value} onChange={(event) => onChange(event.target.value)} className="h-10 w-full rounded-xl border border-[var(--line)] bg-white px-3 text-sm">{options.map(([key, text]) => <option key={key} value={key}>{text}</option>)}</select></label>;
+}
+function countryOptions(workspace: WorkspaceData) {
+  const names = new Map<string, string>();
+  for (const period of workspace.locationPeriods) {
+    const code = period.location.country_code?.trim().toUpperCase();
+    if (period.status === "rejected" || !code) continue;
+    names.set(code, period.location.country_name || period.location.name || regionName(code));
+  }
+  for (const transaction of workspace.transactions) {
+    const code = transaction.merchant_country?.trim().toUpperCase();
+    if (code && !names.has(code)) names.set(code, regionName(code));
+  }
+  return [...names.entries()].map(([code, label]) => ({ code, label })).sort((left, right) => left.label.localeCompare(right.label));
+}
+function matchingConfirmedPeriod(transaction: WorkspaceTransaction, countryCode: string, periods: WorkspaceData["locationPeriods"]) {
+  const date = transaction.occurred_at.slice(0, 10);
+  return periods.find((period) => period.status === "confirmed"
+    && period.location.country_code?.toUpperCase() === countryCode
+    && (!period.person_id || !transaction.account_owner?.id || period.person_id === transaction.account_owner.id)
+    && period.starts_on <= date
+    && (!period.ends_on || period.ends_on >= date));
+}
+function locationDetail(transaction: WorkspaceTransaction) {
+  if (!transaction.merchant_country && !transaction.location_period) return "Excluded from trip and location reports";
+  if (!transaction.location_period) return transaction.merchant_city ? `${transaction.merchant_city} · country only` : "Country only · no confirmed trip";
+  const purpose = transaction.location_period.trip_purpose ? ` · ${transaction.location_period.trip_purpose}` : "";
+  return `${transaction.merchant_city || transaction.location_period.location.name} · ${transaction.location_period.period_type.replaceAll("_", " ")}${purpose}`;
+}
+function regionName(code: string) {
+  try { return new Intl.DisplayNames(["en"], { type: "region" }).of(code) || code; } catch { return code; }
 }
 function date(value: string) { return new Date(value).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }); }
 function money(value: string | number, currency: string) { try { return new Intl.NumberFormat("en-US", { style: "currency", currency, maximumFractionDigits: 2 }).format(Number(value)); } catch { return currency + " " + Number(value).toLocaleString(); } }

@@ -58,6 +58,8 @@ describe("default expense categories", () => {
     expect(classify("Card charge (WM SUPERCENTER #4332)")).toBe("Groceries");
     expect(classify("Card charge (REST COMPA CHAVA ROMA)")).toBe("Dining out");
     expect(classify("SP OPUS ART SUPPLIES")).toBe("Shopping");
+    expect(matchKnownMerchant("THE CLARENCE PARK")).toMatchObject({ categoryName: "Hotels", countryCode: "CA", beneficiaryScope: "personal", transactionLabel: "Canada work trip · hotel" });
+    expect(matchKnownMerchant("CLARENCE CASTLE INC")?.transactionLabel).toBe("Canada work trip · hotel");
     expect(matchKnownMerchant("SP SWEET-CHEMISTRY-SKI")?.excludedFromTotals).toBe(true);
     expect(matchKnownMerchant("OPENAI *CHATGPT SUBSCR")?.recurrenceHint).toBe("monthly");
     expect(matchKnownMerchant("Card charge (GOOGLE *Google One)")?.recurrenceHint).toBe("annual");
