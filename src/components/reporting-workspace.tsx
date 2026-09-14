@@ -23,6 +23,11 @@ export function ReportingWorkspace({ workspace, moneyView, loading, openTransact
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const reportingTransactions = useMemo(() => moneyView === "shared" || scope === "all" ? workspace.transactions : workspace.transactions.filter((transaction) => (transaction.beneficiary_scope ?? "personal") === scope), [moneyView, scope, workspace.transactions]);
   const report = useMemo(() => buildSpendingReport(reportingTransactions, range, today), [range, reportingTransactions, today]);
+  const profileReport = useMemo(() => buildSpendingReport(workspace.transactions, range, today), [range, today, workspace.transactions]);
+  const lucianaPaidReport = useMemo(() => buildSpendingReport(workspace.transactions.filter((transaction) => (transaction.paid_by?.role ?? transaction.account_owner?.role) === "self"), range, today), [range, today, workspace.transactions]);
+  const julianPaidReport = useMemo(() => buildSpendingReport(workspace.transactions.filter((transaction) => (transaction.paid_by?.role ?? transaction.account_owner?.role) === "partner"), range, today), [range, today, workspace.transactions]);
+  const incomeReceived = useMemo(() => incomeInRange(workspace.transactions, range), [range, workspace.transactions]);
+  const sharedFlights = profileReport.categories.find((category) => category.name === "Flights") ?? { amount: 0, transactionIds: [] };
   const comparisonReport = useMemo(() => buildSpendingReport(reportingTransactions, comparisonRange, today), [comparisonRange, reportingTransactions, today]);
   const categoryComparison = useMemo(() => compareSpendingCategories(report, comparisonReport), [comparisonReport, report]);
   const categoryTabs = report.categories.filter((category) => category.transactionIds.length > 0 && category.amount !== 0);
@@ -81,6 +86,23 @@ export function ReportingWorkspace({ workspace, moneyView, loading, openTransact
 
     {workspace.mode !== "live" ? <div className="rounded-xl border border-[#e3bf9f] bg-[#fbefe4] px-4 py-3 text-sm text-[#74411f]"><strong>No financial data loaded.</strong> Sign in to open your private imported transactions.</div> : null}
     {report.missingFxTransactionIds.length ? <button onClick={() => openTransactions({ title: "Transactions missing a USD conversion", transactionIds: report.missingFxTransactionIds, range: report.range })} className="flex w-full items-start gap-3 rounded-xl border border-[#e3bf9f] bg-[#fbefe4] px-4 py-3 text-left text-sm text-[#74411f]"><AlertTriangle aria-hidden="true" className="mt-0.5 size-4 shrink-0" /><span><strong>{report.missingFxTransactionIds.length} transactions are excluded from the USD total.</strong> No historical exchange rate has been confirmed for them. Open the exact transactions.</span></button> : null}
+
+    <article className="rounded-[22px] border border-[var(--forest)] bg-[linear-gradient(135deg,var(--forest-soft),var(--surface)_58%)] p-5">
+      <div className="flex flex-wrap items-end justify-between gap-2"><div><p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--forest)]">Financial profile overview</p><h2 className="mt-1 text-xl font-semibold">{profileName(moneyView)}</h2></div><p className="text-xs text-[var(--muted)]">USD · {rangeLabel(profileReport.range)} · click any number for its transactions</p></div>
+      <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+        {moneyView === "shared" ? <>
+          <OverviewMetric label="Household spending" amount={profileReport.total} onClick={() => openTransactions({ title: "Shared household spending", transactionIds: profileReport.total.transactionIds, range: profileReport.range })} />
+          <OverviewMetric label="Paid by Luciana" amount={lucianaPaidReport.total} onClick={() => openTransactions({ title: "Shared spending paid by Luciana", transactionIds: lucianaPaidReport.total.transactionIds, range: profileReport.range })} />
+          <OverviewMetric label="Paid by Julian" amount={julianPaidReport.total} onClick={() => openTransactions({ title: "Shared spending paid by Julian", transactionIds: julianPaidReport.total.transactionIds, range: profileReport.range })} />
+          <OverviewMetric label="Shared flights" amount={sharedFlights} onClick={() => openTransactions({ title: "Shared flights", transactionIds: sharedFlights.transactionIds, range: profileReport.range })} />
+        </> : <>
+          <OverviewMetric label={`Paid by ${moneyView === "luciana" ? "Luciana" : "Julian"}`} amount={profileReport.total} onClick={() => openTransactions({ title: "All spending paid from this profile", transactionIds: profileReport.total.transactionIds, range: profileReport.range })} />
+          <OverviewMetric label="Personal use" amount={profileReport.personal} onClick={() => openTransactions({ title: "Personal spending", transactionIds: profileReport.personal.transactionIds, range: profileReport.range })} />
+          <OverviewMetric label="Shared household paid" amount={profileReport.household} onClick={() => openTransactions({ title: "Shared household spending paid from this profile", transactionIds: profileReport.household.transactionIds, range: profileReport.range })} />
+          <OverviewMetric label="Income received" amount={incomeReceived} onClick={() => openTransactions({ title: "Income received by this profile", transactionIds: incomeReceived.transactionIds, range: profileReport.range })} />
+        </>}
+      </div>
+    </article>
 
     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
       <MetricButton label={basis === "cash" ? "Cash spending" : "Monthly normalized cost"} value={loading ? "Loading…" : money(selectedTotal.amount)} note={`${rangeLabel(report.range)} · ${selectedTotal.transactionIds.length} transactions`} icon={ArrowUpRight} tone="amber" onClick={() => open(basis === "cash" ? "Cash spending" : "Monthly normalized cost", selectedTotal)} />
@@ -167,6 +189,15 @@ function usdValue(transaction: WorkspaceTransaction) {
   return transaction.reporting_value ? Math.abs(Number(transaction.reporting_value.reporting_amount)) * direction : null;
 }
 function originalMoney(transaction: WorkspaceTransaction) { const amount = transaction.original_amount ?? transaction.amount; const currency = transaction.original_currency ?? transaction.currency; try { return new Intl.NumberFormat("en-US", { style: "currency", currency, maximumFractionDigits: 2 }).format(Number(amount)); } catch { return currency + " " + Number(amount).toLocaleString(); } }
+function incomeInRange(transactions: WorkspaceTransaction[], range: DateRange): TraceableAmount {
+  const rows = transactions.filter((transaction) => transaction.occurred_at.slice(0, 10) >= range.from && transaction.occurred_at.slice(0, 10) <= range.to && transaction.status === "posted" && transaction.metadata?.isDuplicate !== true && !transaction.excluded_from_totals && transaction.kind === "income" && Number(transaction.amount) > 0);
+  return {
+    amount: rows.reduce((sum, transaction) => sum + (transaction.currency === "USD" ? Number(transaction.amount) : Math.abs(Number(transaction.reporting_value?.reporting_amount ?? 0))), 0),
+    transactionIds: rows.map((transaction) => transaction.id),
+  };
+}
+function profileName(view: MoneyView) { return view === "luciana" ? "Luciana" : view === "julian" ? "Julian" : "Shared household"; }
+function OverviewMetric({ label, amount, onClick }: { label: string; amount: TraceableAmount; onClick: () => void }) { return <button onClick={onClick} className="rounded-xl border border-white/80 bg-white/80 p-3 text-left shadow-sm transition hover:border-[var(--forest)]"><span className="block text-[11px] font-medium text-[var(--muted)]">{label}</span><strong className="mt-1 block font-mono text-lg">{money(amount.amount)}</strong><span className="mt-1 block text-[10px] text-[var(--muted)]">{amount.transactionIds.length} transaction{amount.transactionIds.length === 1 ? "" : "s"}</span></button>; }
 function MetricButton({ label, value, note, icon: Icon, tone, onClick }: { label: string; value: string; note: string; icon: typeof ArrowUpRight; tone: "green" | "amber" | "plain"; onClick: () => void }) { const color = tone === "green" ? "bg-[var(--forest-soft)] text-[var(--forest)]" : tone === "amber" ? "bg-[var(--amber-soft)] text-[var(--amber)]" : "bg-[var(--paper-deep)] text-[var(--muted)]"; return <button onClick={onClick} className="rounded-[20px] border border-[var(--line)] bg-[var(--surface)] p-5 text-left shadow-[0_12px_34px_rgba(37,45,42,0.04)] transition hover:-translate-y-0.5 hover:border-[var(--forest)]"><span className="flex items-center justify-between gap-3"><span className="text-sm font-medium text-[var(--muted)]">{label}</span><span className={`grid size-8 place-items-center rounded-xl ${color}`}><Icon aria-hidden="true" className="size-4" /></span></span><strong className="mt-4 block text-2xl tracking-[-0.04em]">{value}</strong><span className="mt-1 block text-xs leading-5 text-[var(--muted)]">{note}</span></button>; }
 function SplitCard({ title, left, right, range, openTransactions }: { title: string; left: TraceableAmount & { label: string }; right: TraceableAmount & { label: string }; range: DateRange; openTransactions: OpenTransactions }) { return <article className="rounded-[22px] border border-[var(--line)] bg-[var(--surface)] p-5"><h2 className="font-semibold">{title}</h2><div className="mt-4 grid grid-cols-2 gap-3">{[left, right].map((item) => <button key={item.label} onClick={() => openTransactions({ title: item.label, transactionIds: item.transactionIds, range })} className="rounded-xl bg-[var(--paper)] p-3 text-left"><span className="text-xs text-[var(--muted)]">{item.label}</span><strong className="mt-1 block text-sm">{money(item.amount)}</strong><span className="mt-1 block text-[10px] text-[var(--muted)]">{item.transactionIds.length} transactions</span></button>)}</div></article>; }
 function LocationComparison({ group, workspace, range, today, openTransactions }: { group: SpendingGroup; workspace: WorkspaceData; range: DateRange; today: string; openTransactions: OpenTransactions }) {

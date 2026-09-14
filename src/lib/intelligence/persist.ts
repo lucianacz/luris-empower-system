@@ -358,15 +358,17 @@ async function applyHouseholdRules(supabase: SupabaseClient, userId: string, tra
   const alwaysPersonalCategories = new Set(["Alternative therapy", "Dentist", "Dermatology", "Health insurance", "Papaya Kids", "Private health", "Therapy", "Workshops & classes"]);
 
   for (const transaction of transactions) {
-    if (transaction.status !== "posted" || transaction.excluded_from_totals || transaction.kind !== "expense") continue;
+    if (transaction.status !== "posted" || transaction.excluded_from_totals || !["expense", "refund"].includes(transaction.kind)) continue;
     const categoryName = transaction.category?.name ?? null;
     const country = transaction.location_period?.location.country_code ?? transaction.merchant_country ?? null;
+    const originalCurrency = transaction.original_currency?.toUpperCase() ?? transaction.currency.toUpperCase();
     const travelDestination = transaction.travel_destination?.toUpperCase() ?? null;
-    const isCanadaTravel = country === "CA" || travelDestination === "CA" || transaction.original_currency === "CAD";
-    const isJulianBrazilTrip = transaction.account_owner?.role === "partner" && (country === "BR" || travelDestination === "BR" || transaction.original_currency === "BRL");
+    const isCanadaTravel = country === "CA" || travelDestination === "CA" || originalCurrency === "CAD";
+    const isJulianBrazilTrip = transaction.account_owner?.role === "partner" && (country === "BR" || travelDestination === "BR" || originalCurrency === "BRL");
     const isSoloTrip = isCanadaTravel || isJulianBrazilTrip || alwaysPersonalCategories.has(categoryName ?? "");
     const isTravelOrCar = sharedTravelAndCar.has(categoryName ?? "");
-    const isMexico = country === "MX" && ["Dining out", "Groceries", "Housing"].includes(categoryName ?? "");
+    const isMexico = (country === "MX" || originalCurrency === "MXN") && ["Dining out", "Groceries", "Housing", "Hotels"].includes(categoryName ?? "");
+    const isUsHotel = country === "US" && categoryName === "Hotels";
     const locationName = transaction.location_period?.location.name?.toLocaleLowerCase() ?? "";
     const isCostaRicaRestaurant = country === "CR" && categoryName === "Dining out";
     const isMiamiRestaurant = transaction.account_owner?.role === "self" && locationName.includes("miami") && categoryName === "Dining out";
@@ -374,7 +376,7 @@ async function applyHouseholdRules(supabase: SupabaseClient, userId: string, tra
     const isYouTube = /youtube\s*\(via apple\)|apple\.com(?:\/|\s+)bill/i.test(`${transaction.merchant_name ?? ""} ${transaction.description}`) && Math.abs(Number(transaction.amount)) === 9.49;
 
     if (isSoloTrip) personalSoloTripIds.push(transaction.id);
-    else if (isTravelOrCar || isMexico || isCostaRicaRestaurant || isMiamiRestaurant || isSharedAsiaExpense || isYouTube) sharedIds.push(transaction.id);
+    else if (isTravelOrCar || isMexico || isUsHotel || isCostaRicaRestaurant || isMiamiRestaurant || isSharedAsiaExpense || isYouTube) sharedIds.push(transaction.id);
   }
 
   for (let index = 0; index < sharedIds.length; index += 500) {

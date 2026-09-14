@@ -80,6 +80,7 @@ describe("default expense categories", () => {
     expect(matchKnownMerchant("Baltodano Gomez Martin")?.excludedFromTotals).toBe(true);
     expect(matchKnownMerchant("Gutierrez Gonzalez Kaily Vanessa")?.categoryName).toBe("Satu Lagi Villa");
     expect(matchKnownMerchant("Uriel Daian")?.categoryName).toBe("Friends & social");
+    expect(matchKnownMerchant("Card charge (BEST BUY 00005512)")?.beneficiaryScope).toBe("shared");
   });
 
   it("keeps the confirmed expense hierarchy explicit", () => {

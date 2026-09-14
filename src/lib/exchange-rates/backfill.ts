@@ -2,10 +2,11 @@ import Decimal from "decimal.js";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export interface PersonalHistoricalRate {
-  id: string;
+  id: string | null;
   rate_date: string;
   source_currency: string;
   rate_to_reporting: string | number;
+  source?: string;
 }
 
 interface TransactionWithoutUsdValue {
@@ -15,6 +16,26 @@ interface TransactionWithoutUsdValue {
   currency: string;
   reporting_values?: Array<{ reporting_currency: string }> | { reporting_currency: string } | null;
 }
+
+interface ObservedCardConversion {
+  id: string;
+  occurred_at: string;
+  amount: string | number;
+  currency: string;
+  original_amount: string | number | null;
+  original_currency: string | null;
+  status: string;
+}
+
+const exactHistoricalFallbacks: Record<string, PersonalHistoricalRate> = {
+  NZD: {
+    id: null,
+    rate_date: "2025-07-28",
+    source_currency: "NZD",
+    rate_to_reporting: "0.5973",
+    source: "Federal Reserve H.10 historical reference · 2025-07-28",
+  },
+};
 
 export function nearestHistoricalRate(rates: PersonalHistoricalRate[], transactionDate: string) {
   const target = Date.parse(`${transactionDate.slice(0, 10)}T00:00:00Z`);
@@ -29,16 +50,25 @@ export function nearestHistoricalRate(rates: PersonalHistoricalRate[], transacti
 }
 
 export async function backfillEstimatedReportingValues(supabase: SupabaseClient, userId: string) {
-  const rates = await loadPersonalRates(supabase, userId);
+  const [personalRates, observedRates] = await Promise.all([
+    loadPersonalRates(supabase, userId),
+    loadObservedCardRates(supabase, userId),
+  ]);
   const ratesByCurrency = new Map<string, PersonalHistoricalRate[]>();
-  for (const rate of rates) ratesByCurrency.set(rate.source_currency, [...(ratesByCurrency.get(rate.source_currency) ?? []), rate]);
+  for (const rate of [...personalRates, ...observedRates]) ratesByCurrency.set(rate.source_currency, [...(ratesByCurrency.get(rate.source_currency) ?? []), rate]);
 
   const transactions = await loadTransactionsWithoutUsdValue(supabase, userId);
   const rows = transactions.flatMap((transaction) => {
     if (hasUsdValue(transaction.reporting_values)) return [];
-    const rate = nearestHistoricalRate(ratesByCurrency.get(transaction.currency) ?? [], transaction.occurred_at);
+    const available = ratesByCurrency.get(transaction.currency) ?? [];
+    const personal = available.filter((rate) => rate.id != null);
+    const rate = nearestHistoricalRate(personal.length ? personal : available, transaction.occurred_at)
+      ?? exactHistoricalFallbacks[transaction.currency];
     if (!rate) return [];
     const rateValue = new Decimal(rate.rate_to_reporting);
+    const source = rate.source ?? (rate.id
+      ? `Estimated from nearest ARQ conversion · rate date ${rate.rate_date}`
+      : `Estimated from nearby imported card conversion · observation date ${rate.rate_date}`);
     return [{
       user_id: userId,
       transaction_id: transaction.id,
@@ -46,7 +76,7 @@ export async function backfillEstimatedReportingValues(supabase: SupabaseClient,
       reporting_currency: "USD",
       reporting_amount: new Decimal(transaction.amount).times(rateValue).toDecimalPlaces(8).toFixed(),
       rate_to_reporting: rateValue.toFixed(),
-      source: `Estimated from nearest ARQ conversion · rate date ${rate.rate_date}`,
+      source,
       is_estimated: true,
     }];
   });
@@ -57,6 +87,19 @@ export async function backfillEstimatedReportingValues(supabase: SupabaseClient,
   }
 
   return rows.length;
+}
+
+export function observedCardRate(row: ObservedCardConversion): PersonalHistoricalRate | null {
+  if (row.status !== "posted" || row.currency.toUpperCase() !== "USD" || !row.original_currency || row.original_currency.toUpperCase() === "USD") return null;
+  const usdAmount = new Decimal(row.amount || 0).abs();
+  const originalAmount = new Decimal(row.original_amount || 0).abs();
+  if (usdAmount.isZero() || originalAmount.isZero()) return null;
+  return {
+    id: null,
+    rate_date: row.occurred_at.slice(0, 10),
+    source_currency: row.original_currency.toUpperCase(),
+    rate_to_reporting: usdAmount.div(originalAmount).toFixed(12),
+  };
 }
 
 async function loadPersonalRates(supabase: SupabaseClient, userId: string) {
@@ -81,6 +124,32 @@ async function loadPersonalRates(supabase: SupabaseClient, userId: string) {
   return rows;
 }
 
+async function loadObservedCardRates(supabase: SupabaseClient, userId: string) {
+  const rates: PersonalHistoricalRate[] = [];
+  let cursor: string | null = null;
+  for (;;) {
+    let query = supabase.from("transactions")
+      .select("id,occurred_at,amount,currency,original_amount,original_currency,status")
+      .eq("user_id", userId)
+      .eq("status", "posted")
+      .eq("currency", "USD")
+      .not("original_currency", "is", null)
+      .order("id")
+      .limit(500);
+    if (cursor) query = query.gt("id", cursor);
+    const { data, error } = await query;
+    if (error) throw error;
+    const page = (data ?? []) as ObservedCardConversion[];
+    for (const row of page) {
+      const rate = observedCardRate(row);
+      if (rate) rates.push(rate);
+    }
+    if (page.length < 500) break;
+    cursor = page.at(-1)!.id;
+  }
+  return rates;
+}
+
 async function loadTransactionsWithoutUsdValue(supabase: SupabaseClient, userId: string) {
   const rows: TransactionWithoutUsdValue[] = [];
   let cursor: string | null = null;
@@ -89,9 +158,8 @@ async function loadTransactionsWithoutUsdValue(supabase: SupabaseClient, userId:
       .select("id,occurred_at,amount,currency,reporting_values:transaction_reporting_values(reporting_currency)")
       .eq("user_id", userId)
       .eq("status", "posted")
-      .eq("excluded_from_totals", false)
-      .in("kind", ["expense", "fee", "tax", "refund"])
       .neq("currency", "USD")
+      .neq("amount", 0)
       .order("id")
       .limit(500);
     if (cursor) query = query.gt("id", cursor);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { nearestHistoricalRate, type PersonalHistoricalRate } from "./backfill";
+import { nearestHistoricalRate, observedCardRate, type PersonalHistoricalRate } from "./backfill";
 
 const rate = (id: string, date: string, value: number): PersonalHistoricalRate => ({ id, rate_date: date, source_currency: "ARS", rate_to_reporting: value });
 
@@ -16,5 +16,18 @@ describe("historical ARQ conversion backfill", () => {
 
   it("does not invent a rate when that currency has no personal conversion", () => {
     expect(nearestHistoricalRate([], "2026-03-11")).toBeNull();
+  });
+
+  it("derives USD per local-currency unit from an imported card conversion", () => {
+    expect(observedCardRate({ id: "tx", occurred_at: "2026-07-20T00:00:00Z", amount: -71.96, currency: "USD", original_amount: 100, original_currency: "CAD", status: "posted" })).toMatchObject({
+      id: null,
+      rate_date: "2026-07-20",
+      source_currency: "CAD",
+      rate_to_reporting: "0.719600000000",
+    });
+  });
+
+  it("ignores observations that are not completed USD card conversions", () => {
+    expect(observedCardRate({ id: "tx", occurred_at: "2026-07-20", amount: -71.96, currency: "EUR", original_amount: 100, original_currency: "CAD", status: "posted" })).toBeNull();
   });
 });
