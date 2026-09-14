@@ -1,4 +1,4 @@
-import { AlpacaPdfAdapter } from "./adapters/alpaca-pdf";
+import { AlpacaPdfAdapter, parseAlpacaStatement } from "./adapters/alpaca-pdf";
 import { ArqCsvAdapter } from "./adapters/arq-csv";
 import { ArqPdfAdapter } from "./adapters/arq-pdf";
 import { BrubankCsvAdapter } from "./adapters/brubank-csv";
@@ -72,13 +72,14 @@ export async function previewFile(file: PreviewFile, options: { provider?: Provi
   input.mapping = mapping;
   const requiresMapping = chosen.adapter.provider === "generic" && (!mapping.date || !mapping.description || (!mapping.amount && !mapping.debit && !mapping.credit));
   const transactions = requiresMapping ? [] : chosen.adapter.parse(input);
+  const investmentStatement = chosen.adapter.provider === "alpaca" ? parseAlpacaStatement(input.pdfLines ?? []) ?? undefined : undefined;
   const seen = new Set<string>();
   for (const transaction of transactions) {
     if (seen.has(transaction.fingerprint)) transaction.warnings.push("Possible duplicate within this file.");
     seen.add(transaction.fingerprint);
   }
 
-  if (chosen.adapter.provider === "alpaca") warnings.push("Investment statement detected. It is staged for the investment module and excluded from spending imports.");
+  if (chosen.adapter.provider === "alpaca") warnings.push(investmentStatement ? `Investment statement detected: ${investmentStatement.positions.length} positions and ${investmentStatement.transactions.length} investment movements. Nothing is added to consumer spending.` : "Investment statement detected, but its positions need review before import.");
   if (!transactions.length && !requiresMapping && chosen.adapter.provider !== "alpaca") warnings.push("No transaction rows could be normalized from this file.");
   const dates = transactions.map((transaction) => transaction.occurredAt).sort();
   const unresolvedRows = transactions.filter((transaction) => transaction.kind === "unknown").length;
@@ -98,16 +99,17 @@ export async function previewFile(file: PreviewFile, options: { provider?: Provi
     transactions,
     warnings,
     summary: {
-      totalRows: input.csvRows?.length ?? transactions.length,
-      readyRows: transactions.length - unresolvedRows,
+      totalRows: input.csvRows?.length ?? (investmentStatement ? investmentStatement.positions.length + investmentStatement.transactions.length : transactions.length),
+      readyRows: investmentStatement ? investmentStatement.positions.length + investmentStatement.transactions.length : transactions.length - unresolvedRows,
       warningRows,
       unresolvedRows,
       failedRows: transactions.filter((transaction) => transaction.status === "failed").length,
       currencies,
       dateFrom: inferredPeriod?.start ?? dates[0] ?? null,
       dateTo: inferredPeriod?.end ?? dates.at(-1) ?? null,
-      accountLabel: accountLabel(chosen.detection, currencies),
+      accountLabel: investmentStatement?.accountLabel ?? accountLabel(chosen.detection, currencies),
     },
+    investmentStatement,
   };
 }
 

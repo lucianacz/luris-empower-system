@@ -78,6 +78,19 @@ export interface ImportPreview {
   transactions: NormalizedTransaction[];
   warnings: string[];
   summary: ImportSummary;
+  investmentStatement?: InvestmentStatementPreview;
+}
+
+export interface InvestmentStatementPreview {
+  accountLabel: string;
+  periodStart: string;
+  periodEnd: string;
+  currency: string;
+  cashAvailable: number;
+  totalMarketValue: number;
+  positions: Array<{ symbol: string; name: string; assetType: string; quantity: number; marketPrice: number; currentValue: number; costBasis: number; unrealizedProfitLoss: number }>;
+  transactions: Array<{ occurredAt: string; transactionType: "purchase" | "sale" | "deposit" | "withdrawal" | "dividend" | "interest" | "fee" | "tax" | "correction"; symbol: string | null; quantity: number | null; unitPrice: number | null; grossAmount: number; feeAmount: number; description: string }>;
+  yearToDate: { contributions: number; withdrawals: number; dividends: number; interest: number; fees: number; taxes: number; realizedProfitLoss: number };
 }
 
 export interface AdapterInput {

@@ -5,7 +5,7 @@ import { partitionDuplicates } from "@/lib/import/duplicates";
 import { previewFile } from "@/lib/import/engine";
 import { stableFingerprint } from "@/lib/import/normalize";
 import { canonicalMerchant } from "@/lib/reporting/report";
-import { providers, type ColumnMapping, type NormalizedTransaction, type Provider } from "@/lib/import/types";
+import { providers, type ColumnMapping, type InvestmentStatementPreview, type NormalizedTransaction, type Provider } from "@/lib/import/types";
 import { hasSupabaseEnv } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
 import { rebuildTransferSuggestions } from "@/lib/transfers/persist";
@@ -27,6 +27,7 @@ export async function POST(request: Request) {
   let createdNewBatch = false;
   let repairingExistingBatch = false;
   const insertedTransactionIds: string[] = [];
+  const insertedInvestmentTransactionIds: string[] = [];
   try {
     const form = await request.formData();
     const file = form.get("file");
@@ -36,6 +37,12 @@ export async function POST(request: Request) {
     const providerValue = form.get("provider");
     const provider = typeof providerValue === "string" && providers.includes(providerValue as Provider) ? providerValue as Provider : undefined;
     const deferAnalysis = form.get("deferAnalysis") === "true";
+    const ownerPersonIdValue = form.get("ownerPersonId");
+    const ownerPersonId = typeof ownerPersonIdValue === "string" && ownerPersonIdValue ? ownerPersonIdValue : null;
+    if (ownerPersonId) {
+      const { data: owner } = await supabase.from("people").select("id").eq("id", ownerPersonId).eq("user_id", user.id).maybeSingle();
+      if (!owner) return Response.json({ error: "Choose an account owner from this workspace." }, { status: 400 });
+    }
     const mappingValue = form.get("mapping");
     const mapping = typeof mappingValue === "string" && mappingValue ? JSON.parse(mappingValue) as ColumnMapping : undefined;
     const bytes = new Uint8Array(await file.arrayBuffer());
@@ -47,10 +54,12 @@ export async function POST(request: Request) {
     if (existingBatchError) throw existingBatchError;
     let existingTransactionCount = 0;
     if (existingBatch) {
-      const { count, error: countError } = await supabase.from("transactions").select("id", { count: "exact", head: true }).eq("user_id", user.id).eq("import_batch_id", existingBatch.id);
+      const countQuery = isInvestmentStatement ? supabase.from("investment_transactions") : supabase.from("transactions");
+      const { count, error: countError } = await countQuery.select("id", { count: "exact", head: true }).eq("user_id", user.id).eq("import_batch_id", existingBatch.id);
       if (countError) throw countError;
       existingTransactionCount = count ?? 0;
-      if (existingBatch.status !== "confirmed" || existingTransactionCount === existingBatch.imported_count || !existingBatch.account_id) {
+      const completeInvestmentImport = isInvestmentStatement && existingTransactionCount > 0 && existingTransactionCount === existingBatch.imported_count;
+      if (existingBatch.status !== "confirmed" || (!isInvestmentStatement && existingTransactionCount === existingBatch.imported_count) || completeInvestmentImport || !existingBatch.account_id) {
         return Response.json({ alreadyImported: true, batch: existingBatch, message: "This exact file is already in import history. No duplicate transactions were created." }, { status: 409 });
       }
       if (existingTransactionCount > existingBatch.imported_count) {
@@ -139,6 +148,12 @@ export async function POST(request: Request) {
     ];
     const { accepted, duplicates } = partitionDuplicates(preview.transactions, duplicateKeys);
 
+    if (isInvestmentStatement) {
+      if (!preview.investmentStatement) throw new Error("The Alpaca statement was detected, but its holdings could not be parsed safely.");
+      const investmentResult = await persistAlpacaStatement(supabase, user.id, account.id, batchId, preview.investmentStatement);
+      insertedInvestmentTransactionIds.push(...investmentResult.transactionIds);
+    }
+
     if (accepted.length) {
       const categoryIds = await ensureDefaultCategories(supabase, user.id);
       const { data: savedRules, error: rulesError } = await supabase.from("categorization_rules").select("match_text,category_id").eq("user_id", user.id).eq("enabled", true);
@@ -176,6 +191,8 @@ export async function POST(request: Request) {
           kind,
           excluded_from_totals: known?.excludedFromTotals ?? transaction.excludedFromTotals,
           beneficiary_scope: known?.beneficiaryScope ?? "personal",
+          account_owner_id: ownerPersonId,
+          paid_by_id: ownerPersonId,
           metadata: transaction.metadata,
         };
       });
@@ -202,7 +219,9 @@ export async function POST(request: Request) {
       }
     }
 
-    const dates = accepted.map((transaction) => transaction.occurredAt).sort();
+    const dates = isInvestmentStatement && preview.investmentStatement
+      ? [preview.investmentStatement.periodStart, preview.investmentStatement.periodEnd]
+      : accepted.map((transaction) => transaction.occurredAt).sort();
     const coverageStart = earliestDate(account.coverage_start, dates[0]?.slice(0, 10));
     const coverageEnd = latestDate(account.coverage_end, dates.at(-1)?.slice(0, 10));
     const lastTransactionAt = latestDate(account.last_transaction_at, dates.at(-1));
@@ -216,7 +235,7 @@ export async function POST(request: Request) {
 
     const { error: confirmError } = await supabase.from("import_batches").update({
       status: "confirmed",
-      imported_count: existingTransactionCount + accepted.length,
+      imported_count: existingTransactionCount + (isInvestmentStatement ? preview.investmentStatement?.transactions.length ?? 0 : accepted.length),
       duplicate_count: duplicates.length,
       confirmed_at: new Date().toISOString(),
     }).eq("id", batchId);
@@ -244,7 +263,7 @@ export async function POST(request: Request) {
     return Response.json({
       batchId,
       repaired: repairingExistingBatch,
-      importedCount: accepted.length,
+      importedCount: isInvestmentStatement ? preview.investmentStatement?.transactions.length ?? 0 : accepted.length,
       duplicateCount: duplicates.length,
       unresolvedCount: preview.summary.unresolvedRows,
       transferSuggestionCount,
@@ -260,6 +279,7 @@ export async function POST(request: Request) {
     if (repairingExistingBatch && insertedTransactionIds.length) {
       await supabase.from("transactions").delete().eq("user_id", user.id).in("id", insertedTransactionIds);
     }
+    if (insertedInvestmentTransactionIds.length) await supabase.from("investment_transactions").delete().eq("user_id", user.id).in("id", insertedInvestmentTransactionIds);
     if (createdNewBatch && uploadedStoragePath) await supabase.storage.from("statement-files").remove([uploadedStoragePath]);
     if (createdNewBatch && batchId) {
       await supabase.from("transactions").delete().eq("import_batch_id", batchId).eq("user_id", user.id);
@@ -268,6 +288,60 @@ export async function POST(request: Request) {
     const message = error instanceof Error ? error.message : "The import could not be confirmed.";
     return Response.json({ error: message }, { status: 422 });
   }
+}
+
+async function persistAlpacaStatement(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  financialAccountId: string,
+  batchId: string,
+  statement: InvestmentStatementPreview,
+) {
+  const accountLookup = await supabase.from("investment_accounts").select("id").eq("user_id", userId).eq("institution", "alpaca").eq("name", statement.accountLabel).maybeSingle();
+  if (accountLookup.error) throw accountLookup.error;
+  let investmentAccount = accountLookup.data;
+  if (!investmentAccount) {
+    const created = await supabase.from("investment_accounts").insert({ user_id: userId, financial_account_id: financialAccountId, institution: "alpaca", name: statement.accountLabel, base_currency: statement.currency, cash_available: statement.cashAvailable }).select("id").single();
+    if (created.error) throw created.error;
+    investmentAccount = created.data;
+  } else {
+    const { error } = await supabase.from("investment_accounts").update({ financial_account_id: financialAccountId, base_currency: statement.currency, cash_available: statement.cashAvailable }).eq("id", investmentAccount.id).eq("user_id", userId);
+    if (error) throw error;
+  }
+
+  const assets = new Map<string, string>();
+  for (const position of statement.positions) {
+    const { data: asset, error: assetError } = await supabase.from("investment_assets").upsert({ user_id: userId, symbol: position.symbol, name: position.name, asset_type: position.assetType, currency: statement.currency }, { onConflict: "user_id,symbol,name" }).select("id").single();
+    if (assetError) throw assetError;
+    assets.set(position.symbol, asset.id);
+    const { error: positionError } = await supabase.from("investment_positions").upsert({ user_id: userId, investment_account_id: investmentAccount.id, asset_id: asset.id, import_batch_id: batchId, quantity: position.quantity, cost_basis: position.costBasis, current_value: position.currentValue, realized_profit_loss: 0, unrealized_profit_loss: position.unrealizedProfitLoss, currency: statement.currency, valuation_date: statement.periodEnd }, { onConflict: "investment_account_id,asset_id" });
+    if (positionError) throw positionError;
+  }
+
+  const positionsValue = statement.positions.reduce((sum, position) => sum + position.currentValue, 0);
+  const unrealizedProfitLoss = statement.positions.reduce((sum, position) => sum + position.unrealizedProfitLoss, 0);
+  const { error: snapshotError } = await supabase.from("portfolio_snapshots").upsert({ user_id: userId, investment_account_id: investmentAccount.id, import_batch_id: batchId, valuation_date: statement.periodEnd, cash_value: statement.cashAvailable, positions_value: positionsValue, total_value: statement.totalMarketValue, contributions: statement.yearToDate.contributions, withdrawals: statement.yearToDate.withdrawals, dividends: statement.yearToDate.dividends, interest: statement.yearToDate.interest, fees: statement.yearToDate.fees, taxes: statement.yearToDate.taxes, realized_profit_loss: statement.yearToDate.realizedProfitLoss, unrealized_profit_loss: unrealizedProfitLoss, currency: statement.currency }, { onConflict: "investment_account_id,valuation_date" });
+  if (snapshotError) throw snapshotError;
+
+  const transactionRows = statement.transactions.map((transaction) => ({
+    user_id: userId,
+    investment_account_id: investmentAccount!.id,
+    asset_id: transaction.symbol ? assets.get(transaction.symbol) ?? null : null,
+    import_batch_id: batchId,
+    occurred_at: transaction.occurredAt,
+    transaction_type: transaction.transactionType,
+    quantity: transaction.quantity,
+    unit_price: transaction.unitPrice,
+    gross_amount: transaction.grossAmount,
+    fee_amount: transaction.feeAmount,
+    tax_amount: 0,
+    currency: statement.currency,
+    cost_basis: transaction.transactionType === "purchase" ? transaction.grossAmount : null,
+    metadata: { source: "Alpaca monthly statement", description: transaction.description, statementPeriodEnd: statement.periodEnd },
+  }));
+  const inserted = transactionRows.length ? await supabase.from("investment_transactions").insert(transactionRows).select("id") : { data: [], error: null };
+  if (inserted.error) throw inserted.error;
+  return { transactionIds: (inserted.data ?? []).map((transaction) => transaction.id) };
 }
 
 function earliestDate(left: string | null | undefined, right: string | null | undefined) {

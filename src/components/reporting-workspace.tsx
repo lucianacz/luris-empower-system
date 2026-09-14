@@ -32,7 +32,10 @@ export function ReportingWorkspace({ workspace, loading, openTransactions, openQ
   const selectedTotal = basis === "cash" ? report.total : report.normalizedTotal;
   const maxMonth = Math.max(1, ...report.monthly.map((month) => basis === "cash" ? month.amount : month.normalizedAmount));
   const maxCategory = Math.max(1, ...report.categories.map((category) => category.amount));
-  const workTripRows = useMemo(() => workspace.transactions.filter((transaction) => transaction.location_period?.status === "confirmed" && transaction.location_period.trip_purpose?.toLocaleLowerCase().includes("work")), [workspace.transactions]);
+  const workTripRows = useMemo(() => {
+    const workCountries = new Set(workspace.locationPeriods.filter((period) => period.status === "confirmed" && period.trip_purpose?.toLocaleLowerCase().includes("work")).map((period) => period.location.country_code).filter(Boolean));
+    return workspace.transactions.filter((transaction) => transaction.location_period?.status === "confirmed" && transaction.location_period.trip_purpose?.toLocaleLowerCase().includes("work") || Boolean(transaction.travel_destination && workCountries.has(transaction.travel_destination)));
+  }, [workspace.locationPeriods, workspace.transactions]);
   const workTrips = useMemo(() => buildSpendingReport(workTripRows, range, today), [range, today, workTripRows]);
 
   const updatePrimaryRange = (next: DateRange) => {

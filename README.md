@@ -27,6 +27,7 @@ The current MVP is built around the supplied Deel, ARQ, Brubank, Payoneer, and A
 - Questions for unresolved incoming movements and cash withdrawals
 - Live normalized ledger with category assignment and personal/household splits
 - Traceable USD reporting for current month, previous month, year to date, and custom ranges
+- Income and approximate-savings reporting with source-payment drill-down
 - Monthly cash-flow and normalized service-month views with completed-month averages
 - Click-through totals, charts, categories, merchants, locations, insights, and recurring costs
 - Dynamic location suggestions based on repeated evidence, with confirm/reject/edit/merge/split workflows
@@ -34,6 +35,7 @@ The current MVP is built around the supplied Deel, ARQ, Brubank, Payoneer, and A
 - Proactive recurring-payment, missing-month, double-payment, and uncategorized-merchant questions
 - Recurring-expense details with original currency, historical USD value, and covered-month allocations
 - Configurable historical ARS methodology and dated exchange-rate provenance
+- Clear all-money, Luciana-personal, shared-household, and Julian-personal lenses
 - Partner-ready transaction ownership, payer, beneficiary, split, and reimbursement fields
 - Default category suggestions plus reusable exact-merchant rules
 - Questions Inbox decisions that update transaction treatment and totals
@@ -41,7 +43,7 @@ The current MVP is built around the supplied Deel, ARQ, Brubank, Payoneer, and A
 - Account freshness, statement coverage-gap, and safe-overlap indicators
 - Secure original-file storage linked to import history
 - Whole-batch rollback
-- Separate investment schema, Alpaca statement detection, and manual positions/snapshots
+- Separate investment schema plus Alpaca statement imports for holdings, snapshots, contributions, and trades
 
 All 37 supplied real files were previewed locally through their production adapters: 14 CSV exports and 23 PDF statements. Provider detection succeeded for Deel, ARQ, Brubank, Payoneer, and Alpaca, including empty ARQ statement months. The originals were not modified, copied into this repository, or committed. See [statement mapping notes](docs/statement-mappings.md), the [2025-to-date coverage audit](docs/coverage-audit-2025-to-date.md), and the [September 13 spending reconciliation](docs/spending-reconciliation-2026-09-13.md).
 
@@ -135,7 +137,7 @@ Rollback removes transactions created by the selected batch and marks the batch 
 6. The app stores the original file, imports only new rows, opens questions for uncertainty, and quietly rebuilds transfer suggestions.
 7. Continue through the queue until every selected file is confirmed or safely skipped as a duplicate.
 
-The Spending view then leads with monthly expenses, categories, essential and flexible costs, and personal or household shares. Data coverage remains available below it to flag missing or stale statements.
+The Spending view then leads with monthly expenses, categories, essential and flexible costs, and personal or household shares. The money-view selector keeps the same tabs while switching between Luciana, shared household spending, and a future Julian dataset. The Income & savings tab compares traceable income with genuine spending while keeping owned-account and investment movements separate. Data coverage remains available below it to flag missing or stale statements.
 
 When a transaction is categorized, matching historical descriptions are categorized at the same time and an exact-match rule is saved for future imports. Ambiguous person-to-person payments remain in the uncategorized queue for review.
 
@@ -172,6 +174,8 @@ The current automated suite covers provider parsing, conservative classification
 4. Add the production `/auth/callback` URL to Supabase Authentication redirect URLs.
 5. Deploy.
 
+After deployment, the app is available from any computer at the Vercel HTTPS URL. A separate partner login that can read the same household workspace still requires an explicit household-membership permission; do not share Supabase session links or credentials as a shortcut. The current person/payer/split model is ready for Julian's statements without changing the reporting tabs.
+
 The statement preview and commit handlers use the Node.js runtime and set bounded file sizes and execution durations suitable for Vercel. Supabase provides the database and object storage, so no persistent filesystem is assumed.
 
 ## Scope and future integrations
@@ -180,4 +184,4 @@ CSV/PDF/XLSX upload remains a permanent integration path. Provider APIs are a fu
 
 Do not connect undocumented ARQ or Brubank mobile APIs, intercept app traffic, bypass certificate controls, reverse-engineer authentication, or store mobile session tokens.
 
-Detailed investment-statement automation, budgets, life-period reports, cash estimation, and direct provider APIs remain later phases. The schema reserves those concepts now; the stable expense/import workflow does not depend on them.
+Budgets, broader investment-provider automation, cash estimation, shared-workspace invitations, and direct provider APIs remain later phases. The schema reserves those concepts now; the stable expense/import workflow does not depend on them.

@@ -17,19 +17,22 @@ export async function GET() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return Response.json(createEmptyWorkspace("signed-out"));
 
-  const [accounts, questions, chains, imports, categories, investments, locationPeriods, locationHints, recurringObligations, profile] = await Promise.all([
+  const [accounts, questions, chains, imports, categories, investments, investmentTransactions, portfolioSnapshots, people, locationPeriods, locationHints, recurringObligations, profile] = await Promise.all([
     supabase.from("financial_accounts").select("id,institution,name,currency,last_imported_at,last_transaction_at,coverage_start,coverage_end").eq("user_id", user.id).order("name"),
     supabase.from("questions").select("id,prompt,question_type,created_at,transaction_id,context,priority,supporting_transaction_ids,group_key").eq("user_id", user.id).eq("status", "open").order("priority", { ascending: false }).order("created_at", { ascending: false }).limit(100),
     supabase.from("transfer_chains").select("id,status,confidence,source_amount,source_currency,fee_amount,notes,transfer_chain_members(sequence,allocated_amount,allocated_currency,transaction:transactions(id,occurred_at,description,amount,currency,kind,status,excluded_from_totals,fee_amount,category_id,account:financial_accounts(name,institution)))").eq("user_id", user.id).order("created_at", { ascending: false }).limit(50),
     supabase.from("import_batches").select("id,account_id,institution,file_name,status,row_count,imported_count,duplicate_count,unresolved_count,coverage_start,coverage_end,confirmed_at,created_at").eq("user_id", user.id).order("created_at", { ascending: false }).limit(250),
     supabase.from("categories").select("id,name,kind,color,icon,parent_id,life_area,is_essential,is_extraordinary").eq("user_id", user.id).eq("is_archived", false).order("name"),
     supabase.from("investment_positions").select("id,quantity,cost_basis,current_value,realized_profit_loss,unrealized_profit_loss,currency,valuation_date,asset:investment_assets(symbol,name,asset_type),account:investment_accounts(name)").eq("user_id", user.id).order("valuation_date", { ascending: false }),
+    supabase.from("investment_transactions").select("id,occurred_at,transaction_type,gross_amount,fee_amount,currency,asset:investment_assets(symbol,name),account:investment_accounts(name)").eq("user_id", user.id).order("occurred_at", { ascending: false }).limit(500),
+    supabase.from("portfolio_snapshots").select("id,valuation_date,cash_value,positions_value,total_value,contributions,withdrawals,dividends,interest,fees,taxes,realized_profit_loss,unrealized_profit_loss,currency,account:investment_accounts(name)").eq("user_id", user.id).order("valuation_date", { ascending: false }).limit(120),
+    supabase.from("people").select("id,display_name,role,notes").eq("user_id", user.id).order("role").order("display_name"),
     supabase.from("location_periods").select("id,starts_on,ends_on,status,period_type,trip_purpose,confidence,explanation,evidence,location:locations(id,name,country_code,country_name,default_currency)").eq("user_id", user.id).order("starts_on"),
     supabase.from("location_currency_hints").select("currency,weight,location:locations(country_code,country_name,name)").eq("user_id", user.id),
     supabase.from("recurring_obligations").select("id,provider_name,merchant_key,frequency,status,country_code,expected_amount,currency,next_expected_on,category:categories(name),recurring_obligation_transactions(transaction_id)").eq("user_id", user.id).order("provider_name"),
     supabase.from("profiles").select("ars_exchange_rate_method").eq("id", user.id).maybeSingle(),
   ]);
-  const errors = [accounts.error, questions.error, chains.error, imports.error, categories.error, investments.error, locationPeriods.error, locationHints.error, recurringObligations.error, profile.error].filter(Boolean);
+  const errors = [accounts.error, questions.error, chains.error, imports.error, categories.error, investments.error, investmentTransactions.error, portfolioSnapshots.error, people.error, locationPeriods.error, locationHints.error, recurringObligations.error, profile.error].filter(Boolean);
   if (errors.length) return Response.json({ error: errors[0]?.message ?? "Workspace data could not be loaded." }, { status: 422 });
   const transactions = await loadTransactions(supabase, user.id);
   const duplicateCountByBatch = transactions.reduce((counts, transaction) => {
@@ -69,6 +72,9 @@ export async function GET() {
     imports: (imports.data ?? []).map((batch) => ({ ...batch, duplicate_count: Number(batch.duplicate_count) + (duplicateCountByBatch.get(batch.id) ?? 0) })),
     categories: categories.data ?? [],
     investments: investments.data ?? [],
+    investmentTransactions: (investmentTransactions.data ?? []).map((transaction) => ({ ...transaction, asset: firstRelation(transaction.asset), account: firstRelation(transaction.account) })),
+    portfolioSnapshots: (portfolioSnapshots.data ?? []).map((snapshot) => ({ ...snapshot, account: firstRelation(snapshot.account) })),
+    people: people.data ?? [],
     locationPeriods: [...normalizedLocationPeriods, ...locationSuggestions.map((suggestion) => ({ id: `suggested:${suggestion.key}`, starts_on: suggestion.startsOn, ends_on: suggestion.endsOn, status: "suggested" as const, period_type: "stay" as const, trip_purpose: null, confidence: suggestion.confidence, explanation: suggestion.explanation, evidence: { ...suggestion.evidence, transactionIds: suggestion.transactionIds }, location: { id: `suggested-location:${suggestion.countryCode}`, name: suggestion.countryName, country_code: suggestion.countryCode, country_name: suggestion.countryName, default_currency: null } }))],
     recurringObligations: (recurringObligations.data ?? []).map((obligation) => ({ ...obligation, category: firstRelation(obligation.category), transaction_ids: (obligation.recurring_obligation_transactions ?? []).map((item) => item.transaction_id), recurring_obligation_transactions: undefined })),
     suggestedQuestions: intelligence.questions,
@@ -79,13 +85,18 @@ export async function GET() {
 }
 
 async function loadTransactions(supabase: Awaited<ReturnType<typeof createClient>>, userId: string) {
-  const transactions: WorkspaceTransaction[] = [];
-  for (let from = 0; ; from += 1000) {
-    const { data, error } = await supabase.from("transactions").select("id,fingerprint,import_batch_id,created_at,occurred_at,posted_at,description,amount,currency,original_amount,original_currency,kind,status,excluded_from_totals,fee_amount,fee_currency,category_id,metadata,merchant_name,merchant_key,merchant_country,merchant_city,travel_origin,travel_destination,travel_date,beneficiary_scope,reimbursement_status,category:categories(name,life_area,is_essential,is_extraordinary,color),account:financial_accounts(name,institution),reporting_value:transaction_reporting_values(reporting_amount,reporting_currency,rate_to_reporting,source,is_estimated,exchange_rate:exchange_rates(methodology,rate_date)),location_period:location_periods(id,starts_on,ends_on,status,period_type,trip_purpose,confidence,explanation,evidence,location:locations(id,name,country_code,country_name,default_currency)),expense_splits(id,split_kind,label,percentage,amount,beneficiary_person_id),expense_allocations:expense_period_allocations(id,service_month,amount,currency,reporting_amount,reporting_currency,is_estimated)").eq("user_id", userId).order("occurred_at", { ascending: false }).range(from, from + 999);
-    if (error) throw error;
-    transactions.push(...(data ?? []).map((transaction) => normalizeTransaction(transaction as Record<string, unknown>)));
-    if (!data || data.length < 1000) break;
-  }
+  const pageSize = 1000;
+  const selection = "id,fingerprint,import_batch_id,created_at,occurred_at,posted_at,description,amount,currency,original_amount,original_currency,kind,status,excluded_from_totals,fee_amount,fee_currency,category_id,metadata,merchant_name,merchant_key,merchant_country,merchant_city,travel_origin,travel_destination,travel_date,beneficiary_scope,reimbursement_status,category:categories(name,life_area,is_essential,is_extraordinary,color),account:financial_accounts(name,institution),account_owner:people!transactions_account_owner_id_fkey(id,display_name,role),paid_by:people!transactions_paid_by_id_fkey(id,display_name,role),reporting_value:transaction_reporting_values(reporting_amount,reporting_currency,rate_to_reporting,source,is_estimated,exchange_rate:exchange_rates(methodology,rate_date)),location_period:location_periods(id,starts_on,ends_on,status,period_type,trip_purpose,confidence,explanation,evidence,location:locations(id,name,country_code,country_name,default_currency)),expense_splits(id,split_kind,label,percentage,amount,beneficiary_person_id),expense_allocations:expense_period_allocations(id,service_month,amount,currency,reporting_amount,reporting_currency,is_estimated)";
+  const firstPage = await supabase.from("transactions").select(selection, { count: "exact" }).eq("user_id", userId).order("occurred_at", { ascending: false }).range(0, pageSize - 1);
+  if (firstPage.error) throw firstPage.error;
+  const total = firstPage.count ?? firstPage.data?.length ?? 0;
+  const remainingPages = await Promise.all(Array.from({ length: Math.max(0, Math.ceil(total / pageSize) - 1) }, (_, index) => {
+    const from = (index + 1) * pageSize;
+    return supabase.from("transactions").select(selection).eq("user_id", userId).order("occurred_at", { ascending: false }).range(from, from + pageSize - 1);
+  }));
+  const pageError = remainingPages.find((page) => page.error)?.error;
+  if (pageError) throw pageError;
+  const transactions = [firstPage, ...remainingPages].flatMap((page) => (page.data ?? []).map((transaction) => normalizeTransaction(transaction as Record<string, unknown>)));
   return markDuplicateFingerprints(transactions);
 }
 
@@ -94,7 +105,7 @@ function normalizeTransaction(value: Record<string, unknown>): WorkspaceTransact
   const locationPeriod = firstRelation(value.location_period as Record<string, unknown> | Record<string, unknown>[] | null);
   const description = cleanDescription(String(value.description ?? ""));
   const merchantName = value.merchant_name ? cleanDescription(String(value.merchant_name)) : null;
-  return { ...value, description, merchant_name: merchantName, category: firstRelation(value.category), account: firstRelation(value.account), reporting_value: normalizeReportingValue(reportingValue), location_period: locationPeriod ? normalizeLocationPeriod(locationPeriod) : null } as unknown as WorkspaceTransaction;
+  return { ...value, description, merchant_name: merchantName, category: firstRelation(value.category), account: firstRelation(value.account), account_owner: firstRelation(value.account_owner), paid_by: firstRelation(value.paid_by), reporting_value: normalizeReportingValue(reportingValue), location_period: locationPeriod ? normalizeLocationPeriod(locationPeriod) : null } as unknown as WorkspaceTransaction;
 }
 
 function normalizeReportingValue(value: Record<string, unknown> | null) {

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { matchKnownMerchant, resolvedKnownMerchantKind } from "./known-merchants";
 import { defaultExpenseCategories, suggestDefaultCategory } from "./defaults";
 
-const classify = (description: string, mccLabel: string | null = null, kind = "expense") => suggestDefaultCategory({ kind: kind as "expense", description, metadata: { mccLabel }, amount: "-10", currency: "USD" });
+const classify = (description: string, mccLabel: string | null = null, kind = "expense", mcc: string | null = null) => suggestDefaultCategory({ kind: kind as "expense", description, metadata: { mccLabel, mcc }, amount: "-10", currency: "USD" });
 
 describe("default expense categories", () => {
   it("uses merchant descriptions and MCC labels", () => {
@@ -10,6 +10,9 @@ describe("default expense categories", () => {
     expect(classify("UBER TRIP")).toBe("Transport");
     expect(classify("AIRBNB RESERVATION")).toBe("Housing");
     expect(classify("OPENAI subscription")).toBe("Subscriptions & software");
+    expect(classify("Truncated airline descriptor", "Miscellaneous", "expense", "4511")).toBe("Flights");
+    expect(classify("Unknown lodging descriptor", "Miscellaneous", "expense", "7011")).toBe("Hotels");
+    expect(classify("Unknown medical descriptor", "Miscellaneous", "expense", "8011")).toBe("Private health");
   });
 
   it("does not force unknown merchants into a misleading category", () => {
@@ -36,6 +39,11 @@ describe("default expense categories", () => {
     expect(classify("CAROLINA AFERGAN")).toBe("Friends & social");
     expect(classify("AUSOL")).toBe("Tolls & highways");
     expect(classify("SP SWEET-CHEMISTRY-SKI")).toBe("Work tests");
+    expect(classify("HISPANO MEXICANO DE BU")).toBe("Diving & activities");
+    expect(classify("Card charge (ANTARES DHANGETHI)")).toBe("Hotels");
+    expect(classify("HKAIRWEB-USD2504062307273")).toBe("Flights");
+    expect(classify("Card charge (Prismalink*IND VISAARR)")).toBe("Visas");
+    expect(classify("Card charge (MYONGDONGYEBBEUMJOOEUB)")).toBe("Private health");
     expect(matchKnownMerchant("SP SWEET-CHEMISTRY-SKI")?.excludedFromTotals).toBe(true);
     expect(matchKnownMerchant("OPENAI *CHATGPT SUBSCR")?.recurrenceHint).toBe("monthly");
     expect(matchKnownMerchant("Card charge (GOOGLE *Google One)")?.recurrenceHint).toBe("annual");
@@ -61,5 +69,8 @@ describe("default expense categories", () => {
     expect(resolvedKnownMerchantKind(psychologist, "-60000", "transfer")).toBe("expense");
     expect(resolvedKnownMerchantKind(psychologist, "60000", "refund")).toBe("refund");
     expect(resolvedKnownMerchantKind(matchKnownMerchant("Moved to DolarApp (ARQ)"), "-500", "unknown")).toBe("transfer");
+    expect(resolvedKnownMerchantKind(matchKnownMerchant("Deel Balance"), "500", "unknown")).toBe("transfer");
+    expect(matchKnownMerchant("Payment to Julian Aaron Stivelman", { amount: "-60000", currency: "USD" })?.categoryName).toBe("Satu Lagi Villa");
+    expect(matchKnownMerchant("Payment to Julian Aaron Stivelman", { amount: "-79", currency: "USD" })?.categoryName).not.toBe("Satu Lagi Villa");
   });
 });

@@ -40,7 +40,7 @@ export function inferLocationSuggestions(transactions: WorkspaceTransaction[], c
     signals.set(country.code, [...(signals.get(country.code) ?? []), signal]);
   }
 
-  return [...signals.values()].flatMap((items) => clusterSignals(items, confirmed)).filter((suggestion) => !confirmed.some((period) => period.status !== "suggested" && period.location.country_code === suggestion.countryCode && overlaps(period.starts_on, period.ends_on, suggestion.startsOn, suggestion.endsOn))).sort((left, right) => left.startsOn.localeCompare(right.startsOn));
+  return [...signals.values()].flatMap((items) => clusterSignals(items, confirmed)).filter((suggestion) => !confirmed.some((period) => period.status === "confirmed" && overlaps(period.starts_on, period.ends_on, suggestion.startsOn, suggestion.endsOn))).sort((left, right) => left.startsOn.localeCompare(right.startsOn));
 }
 
 interface Signal { transactionId: string; date: string; countryCode: string; countryName: string; source: "merchant_country" | "currency" | "flight_destination"; housing: boolean }
@@ -50,6 +50,7 @@ function countrySignal(transaction: WorkspaceTransaction, availableHints: typeof
   const currencyHint = availableHints[originalCurrency];
   if (currencyHint) return { ...currencyHint, source: "currency" as const };
   if (isRemoteOrProcessorMerchant(transaction)) return null;
+  if (["USD", "EUR"].includes(originalCurrency) && !transaction.merchant_city) return null;
   const raw = transaction.merchant_country || stringMetadata(transaction.metadata?.merchantCountry);
   if (raw) {
     const normalized = raw.trim().toUpperCase();
@@ -66,7 +67,7 @@ function isRemoteOrProcessorMerchant(transaction: WorkspaceTransaction) {
 }
 
 function clusterSignals(items: Signal[], confirmed: WorkspaceLocationPeriod[]) {
-  const sorted = [...items].sort((left, right) => left.date.localeCompare(right.date));
+  const sorted = items.filter((item) => !confirmed.some((period) => period.status === "confirmed" && period.starts_on <= item.date && (period.ends_on ?? "9999-12-31") >= item.date)).sort((left, right) => left.date.localeCompare(right.date));
   const clusters: Signal[][] = [];
   for (const item of sorted) {
     const active = clusters.at(-1);

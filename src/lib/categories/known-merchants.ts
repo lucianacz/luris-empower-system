@@ -16,6 +16,7 @@ export interface KnownMerchantRule {
   seasonalMonthsPerYear?: number;
   beneficiaryScope?: "personal" | "shared";
   amount?: number;
+  minAbsAmount?: number;
   currency?: string;
   kind?: TransactionKind;
   excludedFromTotals?: boolean;
@@ -38,8 +39,8 @@ export function resolvedKnownMerchantKind(rule: KnownMerchantRule | null, amount
 }
 
 export const knownMerchantRules: KnownMerchantRule[] = [
-  { id: "apple-youtube", pattern: /\bapple\.com\/bill\b/i, displayName: "YouTube (via Apple)", categoryName: "Subscriptions & software", recurrenceHint: "monthly", recurringStatus: "active", subscription: true, beneficiaryScope: "personal", amount: 9.49, currency: "USD" },
-  { id: "apple-icloud", pattern: /\bapple\.com\/bill\b/i, displayName: "iCloud (via Apple)", categoryName: "Subscriptions & software", recurrenceHint: "monthly", recurringStatus: "active", subscription: true, beneficiaryScope: "personal", amount: 0.99, currency: "USD", ignoredMissingMonths: ["2025-12"], notes: "Not subscribed in December 2025; resumed afterward." },
+  { id: "apple-youtube", pattern: /\bapple\.com(?:\/|\s+)bill\b/i, displayName: "YouTube (via Apple)", categoryName: "Subscriptions & software", recurrenceHint: "monthly", recurringStatus: "active", subscription: true, beneficiaryScope: "personal", amount: 9.49, currency: "USD" },
+  { id: "apple-icloud", pattern: /\bapple\.com(?:\/|\s+)bill\b/i, displayName: "iCloud (via Apple)", categoryName: "Subscriptions & software", recurrenceHint: "monthly", recurringStatus: "active", subscription: true, beneficiaryScope: "personal", amount: 0.99, currency: "USD", ignoredMissingMonths: ["2025-12"], notes: "Not subscribed in December 2025; resumed afterward." },
   { id: "seven-eleven", pattern: /\b(?:7|seven)[ -]?eleven\b/i, displayName: "7-Eleven", categoryName: "Groceries", beneficiaryScope: "shared" },
   { id: "citymall", pattern: /\bcity\s*mall\b/i, displayName: "Citymall", categoryName: "Groceries", countryCode: "CR", beneficiaryScope: "shared" },
   { id: "golden-mall", pattern: /\bgolden\s*mall\b/i, displayName: "Golden Mall", categoryName: "Groceries", countryCode: "CR", beneficiaryScope: "shared" },
@@ -67,7 +68,42 @@ export const knownMerchantRules: KnownMerchantRule[] = [
   { id: "enterprise", pattern: /\benterprise\b/i, displayName: "Enterprise", categoryName: "Car rental" },
   { id: "anthropic-claude", pattern: /\banthropic\*?\s*claude\s+sub\b|\bclaude\.ai\s+subscription\b/i, displayName: "Claude", categoryName: "Subscriptions & software", recurrenceHint: "monthly", recurringStatus: "active", subscription: true, beneficiaryScope: "personal", ignoredMissingMonths: ["2026-05", "2026-06"], confirmedPlanChangeOn: "2026-08-25", notes: "Paused before resubscribing in July 2026; latest amount is the normal price after a plan change." },
   { id: "openai-chatgpt", pattern: /\bopenai\s*\*?\s*chatgpt\s+subscr\b|\bchatgpt\s+subscription\b/i, displayName: "ChatGPT", categoryName: "Subscriptions & software", recurrenceHint: "monthly", recurringStatus: "active", subscription: true, beneficiaryScope: "personal", validDuplicateMonths: ["2026-04"], confirmedPlanChangeOn: "2026-04-14", notes: "Both April 2026 charges are valid; the plan changed on April 14." },
-  { id: "starlink", pattern: /\bstarlink\s+internet\b/i, displayName: "Starlink Internet", categoryName: "Bills & utilities", countryCode: "CR", recurrenceHint: "monthly", recurringStatus: "active", beneficiaryScope: "shared", paidByPartner: true, notes: "Shared household service paid by partner; gaps in this account are not missing bills." },
+  { id: "starlink", pattern: /\bstarlink\s+internet\b/i, displayName: "Starlink Internet", categoryName: "Bills & utilities", countryCode: "CR", recurrenceHint: "monthly", recurringStatus: "active", subscription: true, beneficiaryScope: "shared", paidByPartner: true, notes: "Shared household Wi-Fi subscription paid by partner; gaps in this account are not missing bills." },
+  { id: "k-eta", pattern: /\bk[ -]?eta\b/i, displayName: "K-ETA", categoryName: "Visas", countryCode: "KR", recurrenceDenied: true, beneficiaryScope: "personal" },
+  { id: "esta", pattern: /\bus\s*customs\s+esta\b|\besta\s+appl(?:ication)?\b/i, displayName: "ESTA travel authorization", categoryName: "Visas", countryCode: "US", recurrenceDenied: true, beneficiaryScope: "personal" },
+  { id: "atm-withdrawal", pattern: /\batm\s+withdrawal\b|\batm0*53\b/i, displayName: "ATM cash withdrawal", categoryName: null, recurrenceDenied: true, beneficiaryScope: "personal", kind: "cash_withdrawal", excludedFromTotals: true, notes: "Cash movement only. It becomes spending only when the cash purchase itself is recorded." },
+  { id: "adrien-levinger", pattern: /\badrien\s+levi(?:n|gn)ger\b/i, displayName: "Salary · Adrien Levinger", categoryName: null, recurrenceHint: "monthly", recurringStatus: "active", beneficiaryScope: "personal", kind: "income", excludedFromTotals: false, notes: "Luciana's salary paid by her employer." },
+  { id: "el-colono-loan", pattern: /\bel\s+colono(?:\s+de)?\s+laurel\b/i, displayName: "El Colono · cash loan recovered", categoryName: null, recurrenceDenied: true, beneficiaryScope: "personal", kind: "transfer", excludedFromTotals: true, notes: "Money lent and later returned in cash. This outflow is a receivable movement, not consumption." },
+  { id: "avila-horizon", pattern: /\bavilas?\s+horizon\b/i, displayName: "Avila's Horizon Dive Resort", categoryName: "Diving & activities", countryCode: "PH", recurrenceDenied: true, beneficiaryScope: "personal", notes: "PADI dive resort in Malapascua; grouped with diving and activities." },
+  { id: "asian-local-transport", pattern: /\bmobile\s+suica\b|\bsioibeoseu\s+seungchagueon\b|\bhong\s+kong\s+tramway\b|\bairswift\s+transport\b/i, displayName: "Local transport", preserveDisplayName: true, categoryName: "Transport", recurrenceDenied: true, beneficiaryScope: "personal" },
+  { id: "asian-hotels", pattern: /\btepanee\s+resort\b|\bebino\s+puluong\s+resort\b/i, displayName: "Hotel or resort", preserveDisplayName: true, categoryName: "Hotels", recurrenceDenied: true, beneficiaryScope: "personal" },
+  { id: "asian-activities", pattern: /\bbulguksa\b|\bkorea\s+heritage\s+service\b|\bmuseo\s+frida\s+kahlo\b/i, displayName: "Cultural activity", preserveDisplayName: true, categoryName: "Diving & activities", recurrenceDenied: true, beneficiaryScope: "personal" },
+  { id: "sugi-pharmacy", pattern: /\bsugi\s+pharmacy\b/i, displayName: "Sugi Pharmacy", categoryName: "Pharmacy", countryCode: "JP", recurrenceDenied: true, beneficiaryScope: "personal" },
+  { id: "private-medical", pattern: /\bccss\s+hospital\b|\bm(?:yong|yeong)dongyebb?eumjooeu[ib]\b/i, displayName: "Private medical care", preserveDisplayName: true, categoryName: "Private health", recurrenceDenied: true, beneficiaryScope: "personal" },
+  { id: "asian-personal-care", pattern: /\bsense\s+spa\b|\bkpay\*?t-?nail\b/i, displayName: "Personal care", preserveDisplayName: true, categoryName: "Personal care", recurrenceDenied: true, beneficiaryScope: "personal" },
+  { id: "photo-shops", pattern: /\bkitamura\b|\btokyophotolab\b|\bfilming\s+lab\b/i, displayName: "Photography shop", preserveDisplayName: true, categoryName: "Shopping", recurrenceDenied: true, beneficiaryScope: "personal" },
+  { id: "known-airlines", pattern: /\barajet\b|\bhkairweb\b|\bgreater\s+bay\b|\bflyscoot\b|\bjin\s+air\b|\bviva\s*aerob\b|\btransp\s+volaris\b|\bcard\s+charge\s+\(united\d+\)|\bcard\s+charge\s+\(indigo\s+ai\)/i, displayName: "Airline", preserveDisplayName: true, categoryName: "Flights", recurrenceDenied: true, beneficiaryScope: "personal" },
+  { id: "localiza", pattern: /^localiza$/i, displayName: "Localiza", categoryName: "Car rental", recurrenceDenied: true, beneficiaryScope: "personal" },
+  { id: "antares-dhangethi", pattern: /\bantares\s+dhangethi\b/i, displayName: "Antares Dhangethi", categoryName: "Hotels", countryCode: "MV", recurrenceDenied: true, beneficiaryScope: "personal" },
+  { id: "hispano-mexicano-buceo", pattern: /\bhispano\s+mexicano\s+de\s+bu\b/i, displayName: "Hispano Mexicano de Buceo", categoryName: "Diving & activities", countryCode: "MX", recurrenceDenied: true, beneficiaryScope: "personal" },
+  { id: "surf-shops", pattern: /\bsea\s+kings\s+surf\s+sh\b/i, displayName: "Sea Kings Surf Shop", categoryName: "Diving & activities", recurrenceDenied: true, beneficiaryScope: "personal" },
+  { id: "express-vpn", pattern: /\bexpressvpn\.com\b/i, displayName: "ExpressVPN", categoryName: "Subscriptions & software", recurrenceHint: "annual", recurringStatus: "active", subscription: true, beneficiaryScope: "personal" },
+  { id: "replicate-software", pattern: /\breplicate\b/i, displayName: "Replicate", categoryName: "Subscriptions & software", recurrenceDenied: true, beneficiaryScope: "personal" },
+  { id: "indonesia-visa-arrival", pattern: /\bprismalink\*?ind\s+visaarr\b/i, displayName: "Indonesia visa on arrival", categoryName: "Visas", countryCode: "ID", recurrenceDenied: true, beneficiaryScope: "personal" },
+  { id: "asian-convenience-stores", pattern: /\bfamilymart\b|\be-?mart\s*24\b|\bssiyu\(cu\)|\bcircle\s+k\b|\bgreen\s+lawn\s+vegetable\b/i, displayName: "Convenience store", preserveDisplayName: true, categoryName: "Groceries", recurrenceDenied: true, beneficiaryScope: "personal" },
+  { id: "asian-restaurants", pattern: /\btenryu\s+ramen\b|\bramen\s+fukuchian\b|\byeobi\s+hansik\b|\bsohonkenaniwasoba\b|\bsuffers\s+grillhouse\b|\bsmoothie\s+shop\b|\bbetular\s+patisserie\b|\bpeekaboo\s+hulhumale\b|\bbontemps\b|\bcheesecake\b|\bwadi\s+al\s+zaafaran\s+nuts\b|\bbaikmidang\b|\bfrench\s+bastards\b|\bvenchi\b|\bangel\s+in\s+us\b|\bhughes\s+pizza\b/i, displayName: "Restaurant or café", preserveDisplayName: true, categoryName: "Dining out", recurrenceDenied: true, beneficiaryScope: "personal" },
+  { id: "travel-shopping-brands", pattern: /\balibaba\.com\b|\bapple\s+store\b|\bpatagonia\s+ko\b|\basicswalking\b|\bwbf\s+kuta\s+brand\b|\bripcurl\b|\buniqlo\b|\bdecathlon\b|\bduty\s+free\s+shop\b|\bnitori\b/i, displayName: "Shopping", preserveDisplayName: true, categoryName: "Shopping", recurrenceDenied: true, beneficiaryScope: "personal" },
+  { id: "olive-young", pattern: /\bolive\s+young\b/i, displayName: "Olive Young", categoryName: "Personal care", countryCode: "KR", recurrenceDenied: true, beneficiaryScope: "personal" },
+  { id: "cocokarafine", pattern: /\bcocokarafine\b/i, displayName: "Cocokara Fine", categoryName: "Pharmacy", countryCode: "JP", recurrenceDenied: true, beneficiaryScope: "personal" },
+  { id: "maldives-telecom", pattern: /\bdhiraagu\b/i, displayName: "Dhiraagu mobile service", categoryName: "Bills & utilities", countryCode: "MV", recurrenceDenied: true, beneficiaryScope: "personal" },
+  { id: "clarence-hostels", pattern: /\bthe\s+clarence\s+park\b|\bclarence\s+castle\s+inc\b/i, displayName: "The Clarence Park hostel", categoryName: "Hotels", countryCode: "CA", recurrenceDenied: true, beneficiaryScope: "personal" },
+  { id: "definit-personal-care", pattern: /^definit$/i, displayName: "Definit", categoryName: "Personal care", countryCode: "AR", recurrenceDenied: true, beneficiaryScope: "personal", notes: "Hair-removal and aesthetics provider in Buenos Aires." },
+  { id: "pilates-hiit", pattern: /\bpilateshiit\b/i, displayName: "Pilates / HIIT", categoryName: "Workshops & classes", countryCode: "AR", recurrenceDenied: true, beneficiaryScope: "personal" },
+  { id: "club-ch-classes", pattern: /^club\s+ch$/i, displayName: "Club CH", categoryName: "Workshops & classes", countryCode: "AR", beneficiaryScope: "personal" },
+  { id: "argentina-restaurants", pattern: /\bbarlosgalgos\b|\bhavannaestdvt\b|\bconfiteriamora\b|\bgeshatostador\b/i, displayName: "Restaurant or café", preserveDisplayName: true, categoryName: "Dining out", countryCode: "AR", recurrenceDenied: true, beneficiaryScope: "personal" },
+  { id: "argentina-food-shops", pattern: /\bopen25hs\b|\bdieteticastomy\b|\bvidaverde\b/i, displayName: "Food shop", preserveDisplayName: true, categoryName: "Groceries", countryCode: "AR", recurrenceDenied: true, beneficiaryScope: "personal" },
+  { id: "argentina-personal-care", pattern: /\bdermaceutica\b|\bsoylashista\b/i, displayName: "Personal care", preserveDisplayName: true, categoryName: "Personal care", countryCode: "AR", recurrenceDenied: true, beneficiaryScope: "personal" },
+  { id: "mh-atelier", pattern: /\bmh\s+atelier\b/i, displayName: "MH Atelier", categoryName: "Shopping", countryCode: "AR", recurrenceDenied: true, beneficiaryScope: "personal" },
   { id: "google-one", pattern: /\bgoogle\s*\*?\s*google\s+one\b|\bgoogle\s+one\b/i, displayName: "Google One", categoryName: "Subscriptions & software", recurrenceHint: "annual", recurringStatus: "active", subscription: true, beneficiaryScope: "personal" },
   { id: "martin-ackerman", pattern: /\bmartin\s+ackerman\b/i, displayName: "Martin Ackerman", categoryName: "Friends & social", recurrenceDenied: true, beneficiaryScope: "personal" },
   { id: "carolina-afergan", pattern: /\bcarolina\s+afergan\b/i, displayName: "Carolina Afergan", categoryName: "Friends & social", recurrenceDenied: true, beneficiaryScope: "personal" },
@@ -79,6 +115,11 @@ export const knownMerchantRules: KnownMerchantRule[] = [
   { id: "not-subscription-ztl", pattern: /\bztl\*?operadoradefranqui\b/i, displayName: "ZTL Operadora de Franqui", categoryName: null, recurrenceDenied: true, beneficiaryScope: "personal" },
   { id: "owned-account", pattern: /\bde una cuenta tuya\b/i, displayName: "Owned-account transfer", categoryName: null, kind: "transfer", excludedFromTotals: true },
   { id: "deel-to-arq", pattern: /\b(?:moved|withdrawal|transfer(?:red)?)\s+to\s+(?:dolarapp+|arq)\b|\bdolarapp+\s*\(?arq\)?\b/i, displayName: "Deel to ARQ", categoryName: null, kind: "transfer", excludedFromTotals: true },
+  { id: "arq-currency-conversion", pattern: /\bconversi[oó]n\s+usdc?\s+(?:a|to)\s+ars\b|\bconversi[oó]n\s+ars\s+(?:a|to)\s+usdc?\b/i, displayName: "ARQ currency conversion", categoryName: null, kind: "transfer", excludedFromTotals: true },
+  { id: "self-transfer-luciana", pattern: /^(?:payment|transfer(?:encia)?|dep[oó]sito)?\s*(?:to|from|a|de)?\s*luciana(?:\s+aaron)?\s+czikk\b/i, displayName: "Luciana's own-account transfer", categoryName: null, kind: "transfer", excludedFromTotals: true },
+  { id: "deel-owned-balance", pattern: /^deel\s+(?:balance|inc)\.?$/i, displayName: "Deel own-account movement", categoryName: null, kind: "transfer", excludedFromTotals: true },
+  { id: "deel-owned-transfer", pattern: /\b(?:transfer(?:encia)?|dep[oó]sito|retiro|withdrawal)\b.*\bdeel\s+(?:balance|inc)\b/i, displayName: "Deel own-account movement", categoryName: null, kind: "transfer", excludedFromTotals: true },
+  { id: "satu-lagi-villa", pattern: /\b(?:payment\s+to\s+)?julian(?:\s+aaron)?\s+stivelman\b/i, displayName: "Satu Lagi Villa", categoryName: "Satu Lagi Villa", recurrenceDenied: true, beneficiaryScope: "shared", minAbsAmount: 5000, kind: "investment_purchase", excludedFromTotals: true, notes: "Property acquisition paid from Deel to Julian's Wise account. Kept separate from living expenses." },
 ];
 
 export function matchKnownMerchant(value: string, context: KnownMerchantContext = {}): KnownMerchantRule | null {
@@ -90,6 +131,7 @@ export function matchKnownMerchant(value: string, context: KnownMerchantContext 
       const amount = Math.abs(Number(context.amount));
       if (!Number.isFinite(amount) || Math.abs(amount - rule.amount) > 0.001) return false;
     }
+    if (rule.minAbsAmount !== undefined && Math.abs(Number(context.amount)) < rule.minAbsAmount) return false;
     return true;
   }) ?? null;
 }

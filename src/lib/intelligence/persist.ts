@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { ensureDefaultCategories } from "@/lib/categories/defaults";
+import { ensureDefaultCategories, suggestDefaultCategory } from "@/lib/categories/defaults";
 import { knownMerchantRules, matchKnownMerchant, normalizeUserCountryHint, resolvedKnownMerchantKind, resolvedKnownMerchantName } from "@/lib/categories/known-merchants";
 import { cleanDescription } from "@/lib/import/normalize";
 import type { TransactionKind } from "@/lib/import/types";
@@ -16,6 +16,7 @@ export async function rebuildSpendingIntelligence(supabase: SupabaseClient, user
   await applyCountryOverrides(supabase, userId, transactions);
   await applyKnownMerchantRules(supabase, userId, transactions, categoryIds);
   await applySpecificCategoryRefinements(supabase, userId, transactions, categoryIds);
+  await applyDefaultCategorySuggestions(supabase, userId, transactions, categoryIds);
   await applyHospitalAlemanRule(supabase, userId, transactions, categoryIds.get("Health insurance") ?? null);
   const estimatedReportingValueCount = await backfillEstimatedReportingValues(supabase, userId);
   const analysis = analyzeRecurring(uniqueByFingerprint(transactions), currentFinanceDate());
@@ -79,6 +80,27 @@ export async function rebuildSpendingIntelligence(supabase: SupabaseClient, user
   return { obligationCount, questionCount, insightCount: analysis.insights.length, estimatedReportingValueCount };
 }
 
+async function applyDefaultCategorySuggestions(supabase: SupabaseClient, userId: string, transactions: WorkspaceTransaction[], categoryIds: Map<string, string>) {
+  const byCategory = new Map<string, WorkspaceTransaction[]>();
+  for (const transaction of transactions) {
+    if (transaction.status !== "posted" || transaction.excluded_from_totals || transaction.kind !== "expense" || transaction.category_id) continue;
+    const categoryName = suggestDefaultCategory({ kind: transaction.kind as TransactionKind, description: transaction.description, metadata: (transaction.metadata ?? {}) as Record<string, string | number | boolean | null>, amount: transaction.amount, currency: transaction.currency });
+    if (!categoryName || !categoryIds.has(categoryName)) continue;
+    byCategory.set(categoryName, [...(byCategory.get(categoryName) ?? []), transaction]);
+  }
+  for (const [categoryName, related] of byCategory) {
+    const categoryId = categoryIds.get(categoryName)!;
+    for (let index = 0; index < related.length; index += 500) {
+      const { error } = await supabase.from("transactions").update({ category_id: categoryId }).eq("user_id", userId).in("id", related.slice(index, index + 500).map((transaction) => transaction.id));
+      if (error) throw error;
+    }
+    for (const transaction of related) {
+      transaction.category_id = categoryId;
+      transaction.category = categoryFor(categoryName);
+    }
+  }
+}
+
 async function applyCountryOverrides(supabase: SupabaseClient, userId: string, transactions: WorkspaceTransaction[]) {
   const costaRicaIds = transactions
     .filter((transaction) => transaction.merchant_country && normalizeUserCountryHint(transaction.merchant_country) === "CR" && transaction.merchant_country !== "CR")
@@ -93,9 +115,9 @@ async function applyCountryOverrides(supabase: SupabaseClient, userId: string, t
 }
 
 async function applyKnownMerchantRules(supabase: SupabaseClient, userId: string, transactions: WorkspaceTransaction[], categoryIds: Map<string, string>) {
-  for (const rule of knownMerchantRules) {
+  await Promise.all(knownMerchantRules.map(async (rule) => {
     const related = transactions.filter((transaction) => matchKnownMerchant(transaction.description, transaction)?.id === rule.id);
-    if (!related.length) continue;
+    if (!related.length) return;
     const categoryId = rule.categoryName ? categoryIds.get(rule.categoryName) ?? null : null;
     let personId: string | null = null;
     if (rule.personRole) {
@@ -149,7 +171,7 @@ async function applyKnownMerchantRules(supabase: SupabaseClient, userId: string,
         if (error) throw error;
       }
     }
-  }
+  }));
 }
 
 async function applySpecificCategoryRefinements(supabase: SupabaseClient, userId: string, transactions: WorkspaceTransaction[], categoryIds: Map<string, string>) {
@@ -206,11 +228,14 @@ const defaultCategoryDetails: Record<string, Omit<NonNullable<WorkspaceTransacti
   Hotels: { life_area: "Travel", is_essential: false, is_extraordinary: true, color: "#7b6fa8" },
   Housing: { life_area: "Home", is_essential: true, is_extraordinary: false, color: "#7a6c5d" },
   "Personal care": { life_area: "Lifestyle", is_essential: false, is_extraordinary: false, color: "#b07d8b" },
+  "Private health": { life_area: "Health", is_essential: true, is_extraordinary: false, color: "#2f7f78" },
   Parking: { life_area: "Mobility", is_essential: true, is_extraordinary: false, color: "#65766f" },
   Pharmacy: { life_area: "Health", is_essential: true, is_extraordinary: false, color: "#6f9d84" },
   Therapy: { life_area: "Health", is_essential: true, is_extraordinary: false, color: "#568b82" },
   Transport: { life_area: "Mobility", is_essential: true, is_extraordinary: false, color: "#496f5d" },
   "Tolls & highways": { life_area: "Mobility", is_essential: true, is_extraordinary: false, color: "#7a7542" },
+  Visas: { life_area: "Travel", is_essential: false, is_extraordinary: true, color: "#58729c" },
+  "Satu Lagi Villa": { life_area: "Assets", is_essential: false, is_extraordinary: true, color: "#8a6545" },
   "Work tests": { life_area: "Work", is_essential: false, is_extraordinary: false, color: "#6f7782" },
   "Workshops & classes": { life_area: "Growth", is_essential: false, is_extraordinary: false, color: "#9a6b52" },
 };
@@ -240,7 +265,7 @@ async function applyHospitalAlemanRule(supabase: SupabaseClient, userId: string,
 async function loadTransactions(supabase: SupabaseClient, userId: string) {
   const transactions: WorkspaceTransaction[] = [];
   for (let from = 0; ; from += 1000) {
-    const { data, error } = await supabase.from("transactions").select("id,fingerprint,occurred_at,description,amount,currency,kind,status,excluded_from_totals,fee_amount,category_id,merchant_name,merchant_key,merchant_country,category:categories(name,life_area,is_essential,is_extraordinary,color)").eq("user_id", userId).order("occurred_at").range(from, from + 999);
+    const { data, error } = await supabase.from("transactions").select("id,fingerprint,occurred_at,description,amount,currency,kind,status,excluded_from_totals,fee_amount,category_id,merchant_name,merchant_key,merchant_country,metadata,category:categories(name,life_area,is_essential,is_extraordinary,color)").eq("user_id", userId).order("occurred_at").range(from, from + 999);
     if (error) throw error;
     transactions.push(...(data ?? []).map((row) => ({ ...row, category: first(row.category), account: null } as unknown as WorkspaceTransaction)));
     if (!data || data.length < 1000) break;

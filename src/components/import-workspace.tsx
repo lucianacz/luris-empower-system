@@ -4,6 +4,7 @@ import * as Progress from "@radix-ui/react-progress";
 import { AlertTriangle, Check, FileSpreadsheet, FileText, Loader2, RotateCcw, UploadCloud, X } from "lucide-react";
 import { DragEvent, useCallback, useRef, useState } from "react";
 import type { ColumnMapping, ColumnRole, ImportPreview, Provider } from "@/lib/import/types";
+import type { WorkspacePerson } from "@/lib/workspace/demo";
 
 const providerOptions: Array<{ value: Provider | ""; label: string }> = [
   { value: "", label: "Detect automatically" },
@@ -29,7 +30,7 @@ const columnRoles: Array<{ key: ColumnRole; label: string; required?: boolean }>
 
 type Stage = "idle" | "previewing" | "preview" | "committing" | "complete" | "error";
 
-export function ImportWorkspace() {
+export function ImportWorkspace({ people = [] }: { people?: WorkspacePerson[] }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
   const [fileQueue, setFileQueue] = useState<File[]>([]);
@@ -40,6 +41,7 @@ export function ImportWorkspace() {
   const [stage, setStage] = useState<Stage>("idle");
   const [message, setMessage] = useState("");
   const [dragging, setDragging] = useState(false);
+  const [ownerPersonId, setOwnerPersonId] = useState(() => people.find((person) => person.role === "self")?.id ?? "");
 
   const runPreview = useCallback(async (selected: File, overrideProvider = provider, overrideMapping = mapping) => {
     setStage("previewing");
@@ -91,6 +93,7 @@ export function ImportWorkspace() {
     form.set("file", file);
     if (provider) form.set("provider", provider);
     if (Object.keys(mapping).length) form.set("mapping", JSON.stringify(mapping));
+    if (ownerPersonId) form.set("ownerPersonId", ownerPersonId);
     if (queueIndex < fileQueue.length - 1) form.set("deferAnalysis", "true");
     try {
       const response = await fetch("/api/import/commit", { method: "POST", body: form });
@@ -166,6 +169,7 @@ export function ImportWorkspace() {
                     {providerOptions.map((option) => <option key={option.value || "auto"} value={option.value}>{option.label}</option>)}
                   </select>
                 </label>
+                {people.length ? <label className="block max-w-sm text-sm font-semibold">Account owner<select value={ownerPersonId} onChange={(event) => setOwnerPersonId(event.target.value)} className="mt-2 h-11 w-full rounded-xl border border-[var(--line)] bg-white px-3 font-normal">{people.filter((person) => ["self", "partner"].includes(person.role)).map((person) => <option key={person.id} value={person.id}>{person.display_name}</option>)}</select><span className="mt-1 block text-xs font-normal text-[var(--muted)]">This keeps Luciana, Julian, and shared reporting separate.</span></label> : null}
 
                 {preview?.requiresMapping ? <MappingEditor headers={preview.headers} mapping={mapping} onChange={setMapping} onApply={() => void runPreview(file, provider, mapping)} /> : null}
                 {preview && !preview.requiresMapping ? <PreviewResult preview={preview} /> : null}
@@ -174,7 +178,7 @@ export function ImportWorkspace() {
 
                 {preview && !preview.requiresMapping && stage !== "complete" ? (
                   <div className="flex flex-wrap items-center justify-between gap-4 border-t border-[var(--line)] pt-5">
-                    <p className="text-sm text-[var(--muted)]">{preview.detection.provider === "alpaca" ? "Confirmation stores the original investment statement and its checksum without adding consumer spending." : `Confirmation saves the original statement, its checksum, and ${preview.transactions.length} normalized rows.`}</p>
+                    <p className="text-sm text-[var(--muted)]">{preview.detection.provider === "alpaca" ? `Confirmation stores the original statement, ${preview.investmentStatement?.positions.length ?? 0} positions, and ${preview.investmentStatement?.transactions.length ?? 0} investment movements without adding consumer spending.` : `Confirmation saves the original statement, its checksum, and ${preview.transactions.length} normalized rows.`}</p>
                     <button disabled={stage === "committing"} onClick={() => void confirmImport()} className="inline-flex h-11 items-center gap-2 rounded-xl bg-[var(--forest)] px-5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-45">
                       {stage === "committing" ? <Loader2 aria-hidden="true" className="size-4 animate-spin" /> : <Check aria-hidden="true" className="size-4" />}
                       {preview.detection.provider === "alpaca" ? "Store statement" : "Confirm import"}
@@ -206,6 +210,8 @@ function PreviewResult({ preview }: { preview: ImportPreview }) {
         <Summary label="Period" value={formatPeriod(preview.summary.dateFrom, preview.summary.dateTo)} />
       </div>
       {preview.warnings.length ? <div className="rounded-xl border border-[#e3bf9f] bg-[#fbefe4] p-3 text-sm text-[#74411f]">{preview.warnings.join(" ")}</div> : null}
+      {preview.investmentStatement ? <div className="rounded-2xl border border-[var(--line)] bg-[var(--paper)] p-4"><p className="text-xs font-semibold uppercase tracking-[0.1em] text-[var(--muted)]">Investment snapshot · {preview.investmentStatement.periodEnd}</p><div className="mt-3 grid gap-2 sm:grid-cols-3"><Summary label="Portfolio value" value={formatUsd(preview.investmentStatement.totalMarketValue)} /><Summary label="Cash" value={formatUsd(preview.investmentStatement.cashAvailable)} /><Summary label="YTD contributions" value={formatUsd(preview.investmentStatement.yearToDate.contributions)} /></div><div className="mt-3 flex flex-wrap gap-2">{preview.investmentStatement.positions.map((position) => <span key={position.symbol} className="rounded-full border border-[var(--line)] bg-white px-3 py-1.5 text-xs font-semibold">{position.symbol} {formatUsd(position.currentValue)}</span>)}</div></div> : null}
+      {!preview.investmentStatement ? (
       <div className="overflow-x-auto rounded-2xl border border-[var(--line)]">
         <table className="w-full min-w-[760px] text-left text-sm">
           <caption className="sr-only">Normalized transaction preview</caption>
@@ -213,6 +219,7 @@ function PreviewResult({ preview }: { preview: ImportPreview }) {
           <tbody className="divide-y divide-[var(--line)]">{rows.map((row) => <tr key={row.fingerprint}><td className="whitespace-nowrap px-4 py-3">{new Date(row.occurredAt).toLocaleDateString()}</td><td className="max-w-[260px] truncate px-4 py-3 font-medium">{row.description}</td><td className="px-4 py-3"><span className="rounded-full bg-[var(--paper-deep)] px-2.5 py-1 text-xs">{row.kind.replaceAll("_", " ")}</span></td><td className="whitespace-nowrap px-4 py-3 text-right font-mono">{row.currency} {row.amount}</td><td className="px-4 py-3">{row.warnings.length ? <span className="inline-flex items-center gap-1 text-[#8a4b21]"><AlertTriangle aria-hidden="true" className="size-3.5" /> Review</span> : row.status}</td></tr>)}</tbody>
         </table>
       </div>
+      ) : null}
       {preview.transactions.length > rows.length ? <p className="text-xs text-[var(--muted)]">Showing 10 of {preview.transactions.length} normalized rows.</p> : null}
     </div>
   );
@@ -233,3 +240,4 @@ function StatusMessage({ message, error }: { message: string; error: boolean }) 
 function InfoCard({ title, items }: { title: string; items: string[] }) { return <article className="rounded-[20px] border border-[var(--line)] bg-[var(--surface)] p-5"><h3 className="font-semibold">{title}</h3><ul className="mt-3 space-y-3">{items.map((item) => <li key={item} className="flex gap-2 text-sm leading-5 text-[var(--muted)]"><Check aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-[var(--forest)]" />{item}</li>)}</ul></article>; }
 function formatBytes(bytes: number) { return bytes < 1024 * 1024 ? `${Math.ceil(bytes / 1024)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`; }
 function formatPeriod(from: string | null, to: string | null) { if (!from || !to) return "Not found"; return `${new Date(from).toLocaleDateString(undefined, { month: "short", year: "2-digit" })}–${new Date(to).toLocaleDateString(undefined, { month: "short", year: "2-digit" })}`; }
+function formatUsd(value: number) { return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(value); }

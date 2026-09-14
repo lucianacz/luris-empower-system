@@ -47,5 +47,8 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     beneficiary_person_id: split.beneficiaryPersonId ?? null,
   }))).select("id,split_kind,label,percentage,amount,currency");
   if (error) return Response.json({ error: error.message }, { status: 422 });
+  const beneficiaryScope = input.data.splits.some((split) => split.kind === "shared" || split.kind === "household_member") ? "shared" : "personal";
+  const { error: scopeError } = await supabase.from("transactions").update({ beneficiary_scope: beneficiaryScope }).eq("id", id).eq("user_id", user.id);
+  if (scopeError) return Response.json({ error: scopeError.message }, { status: 422 });
   return Response.json({ splits: data ?? [] });
 }

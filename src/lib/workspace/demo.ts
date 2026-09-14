@@ -39,6 +39,8 @@ export interface WorkspaceTransaction {
   category_id: string | null;
   category: { name: string; life_area: string; is_essential: boolean; is_extraordinary?: boolean; color: string | null; parent?: { name: string } | null } | null;
   account: { name: string; institution: string; owner?: { id: string; display_name: string } | null } | null;
+  account_owner?: { id: string; display_name: string; role: string } | null;
+  paid_by?: { id: string; display_name: string; role: string } | null;
   metadata?: Record<string, unknown>;
   merchant_name?: string | null;
   merchant_key?: string | null;
@@ -170,6 +172,37 @@ export interface WorkspaceInvestment {
   account: { name: string } | null;
 }
 
+export interface WorkspaceInvestmentTransaction {
+  id: string;
+  occurred_at: string;
+  transaction_type: string;
+  gross_amount: string;
+  fee_amount: string;
+  currency: string;
+  asset: { symbol: string | null; name: string } | null;
+  account: { name: string } | null;
+}
+
+export interface WorkspacePortfolioSnapshot {
+  id: string;
+  valuation_date: string;
+  cash_value: string;
+  positions_value: string;
+  total_value: string;
+  contributions: string;
+  withdrawals: string;
+  dividends: string;
+  interest: string;
+  fees: string;
+  taxes: string;
+  realized_profit_loss: string;
+  unrealized_profit_loss: string;
+  currency: string;
+  account: { name: string } | null;
+}
+
+export interface WorkspacePerson { id: string; display_name: string; role: "self" | "partner" | "provider" | "other"; notes: string | null }
+
 export interface WorkspaceData {
   mode: "demo" | "signed-out" | "live";
   asOfDate: string;
@@ -182,6 +215,9 @@ export interface WorkspaceData {
   categories: WorkspaceCategory[];
   spending: SpendingCurrencySummary[];
   investments: WorkspaceInvestment[];
+  investmentTransactions: WorkspaceInvestmentTransaction[];
+  portfolioSnapshots: WorkspacePortfolioSnapshot[];
+  people: WorkspacePerson[];
   locationPeriods: WorkspaceLocationPeriod[];
   recurringObligations: WorkspaceRecurringObligation[];
   insights: WorkspaceInsight[];
@@ -203,6 +239,9 @@ export function createEmptyWorkspace(mode: WorkspaceData["mode"] = "signed-out",
     categories: [],
     spending: [],
     investments: [],
+    investmentTransactions: [],
+    portfolioSnapshots: [],
+    people: [],
     locationPeriods: [],
     recurringObligations: [],
     insights: [],
@@ -280,6 +319,9 @@ export const demoWorkspace: WorkspaceData = {
   categories: demoCategories,
   spending: [{ currency: "USD", total: 11824.42, averagePerMonth: 1970.74, personal: 11524.42, household: 300, essential: 8830, flexible: 2994.42, uncategorized: 564.67, uncategorizedCount: 6, months: [{ month: "2026-03", amount: 1640 }, { month: "2026-04", amount: 1812 }, { month: "2026-05", amount: 1728 }, { month: "2026-06", amount: 2054 }, { month: "2026-07", amount: 2406 }, { month: "2026-08", amount: 2184.42 }], categories: [{ name: "Housing", lifeArea: "Home", color: "#7a6c5d", amount: 4680, essential: true }, { name: "Groceries", lifeArea: "Food", color: "#52796f", amount: 2500, essential: true }, { name: "Dining out", lifeArea: "Food", color: "#d37a3d", amount: 1300, essential: false }, { name: "Transport", lifeArea: "Mobility", color: "#496f5d", amount: 1050, essential: true }, { name: "Travel", lifeArea: "Travel", color: "#4d7298", amount: 700, essential: false }, { name: "Health insurance", lifeArea: "Health", color: "#326a60", amount: 600, essential: true }, { name: "Uncategorized", lifeArea: "Needs review", color: "#a9a39a", amount: 564.67, essential: false }, { name: "Subscriptions & software", lifeArea: "Digital", color: "#6c63a8", amount: 420, essential: false }, { name: "Bank fees", lifeArea: "Financial", color: "#9c6644", amount: 9.75, essential: false }] }],
   investments: [],
+  investmentTransactions: [],
+  portfolioSnapshots: [],
+  people: [],
   locationPeriods: demoLocations,
   recurringObligations: [{ id: "demo-recurring-insurance", provider_name: "Hospital Alemán", merchant_key: "hospital alemán", frequency: "monthly", status: "active", country_code: "AR", expected_amount: "120", currency: "USD", next_expected_on: "2026-09-05", category: { name: "Health insurance", parent: { name: "Health" } }, transaction_ids: demoInsuranceIds }],
   insights: [{ key: "demo-uncategorized", title: "Six payments still need a category", body: "Open the supporting transactions and teach Empower what they represent.", priority: 90, transactionIds: demoExpenseTransactions.filter((transaction) => !transaction.category_id).map((transaction) => transaction.id) }],
