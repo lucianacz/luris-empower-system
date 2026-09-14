@@ -186,7 +186,7 @@ async function applySpecificCategoryRefinements(supabase: SupabaseClient, userId
     { categoryName: "Hotels", pattern: /hotel|hostel|booking(?:\.com|\.[a-z])?|lodging|accommodation/i, fromCategories: new Set(["Travel", "Hotels"]) },
     { categoryName: "Car rental", pattern: /car rental|alquiler de auto|\benterprise\b|rent[ -]?a[ -]?car/i, fromCategories: new Set(["Travel", "Transport", "Car rental"]) },
     { categoryName: "Car repairs", pattern: /car repair|reparaci[oó]n.*(?:auto|carro)|mec[aá]nic|neum[aá]tic|la casa del hyundai|centro llantero del sur/i, fromCategories: new Set(["Transport", "Car repairs"]) },
-    { categoryName: "Fuel & gas", pattern: /fuel|\bgas\b|gasolin|combustible|servicentro|gas station|lumicentro|terpel|racetrac/i, fromCategories: new Set(["Transport", "Fuel & gas"]) },
+    { categoryName: "Fuel & gas", pattern: /fuel|\bgas\b|gasolin|combustible|servicentro|gas station|lumicentro|terpel|racetrac|shell\s+oil/i, fromCategories: new Set(["Transport", "Fuel & gas"]) },
     { categoryName: "Parking", pattern: /parking|estacionamiento/i, fromCategories: new Set(["Transport", "Parking"]) },
     { categoryName: "Tolls & highways", pattern: /\bausol\b|toll|peaje|autopista|ruta 27/i, fromCategories: new Set(["Transport", "Tolls & highways"]) },
   ];
@@ -254,6 +254,60 @@ async function applySpecificCategoryRefinements(supabase: SupabaseClient, userId
       transaction.beneficiary_scope = "personal";
       transaction.transaction_label = "Papaya Kids · PayPal";
     }
+  }
+
+  const partnerCompanyExpenses = transactions.filter((transaction) => transaction.account_owner?.role === "partner"
+    && transaction.status === "posted"
+    && Number(transaction.amount) < 0
+    && /\bamazon\s+mexico\b|\bamzn\s+mktp\s+ca\*1k38940w3\b|\bhelium10\.com\b|\btiktok\s+ads\b|\bus\s+patent\s+trademark\b|\bgodaddy\b|\bnic\s+argentina\b|\bwww\.nic\.ar\b/i.test(cleanDescription(transaction.description)));
+  if (papayaKidsCategoryId && partnerCompanyExpenses.length) {
+    for (let index = 0; index < partnerCompanyExpenses.length; index += 500) {
+      const { error } = await supabase.from("transactions").update({
+        category_id: papayaKidsCategoryId,
+        kind: "expense",
+        excluded_from_totals: false,
+        beneficiary_scope: "personal",
+        transaction_label: "Papaya Kids · business purchase",
+      }).eq("user_id", userId).in("id", partnerCompanyExpenses.slice(index, index + 500).map((transaction) => transaction.id));
+      if (error) throw error;
+    }
+    for (const transaction of partnerCompanyExpenses) {
+      transaction.category_id = papayaKidsCategoryId;
+      transaction.category = categoryFor("Papaya Kids");
+      transaction.kind = "expense";
+      transaction.excluded_from_totals = false;
+      transaction.beneficiary_scope = "personal";
+      transaction.transaction_label = "Papaya Kids · business purchase";
+      const merchantKey = transaction.merchant_key ?? canonicalMerchant(transaction.merchant_name ?? transaction.description);
+      const { error } = await supabase.from("merchant_profiles").upsert({
+        user_id: userId,
+        merchant_key: merchantKey,
+        display_name: transaction.merchant_name ?? cleanDescription(transaction.description),
+        category_id: papayaKidsCategoryId,
+        transaction_label: "Papaya Kids · business purchase",
+        notes: "Confirmed or clearly identified Papaya Kids business purchase for Julian.",
+      }, { onConflict: "user_id,merchant_key" });
+      if (error) throw error;
+    }
+  }
+
+  const partnerPapayaKids = transactions.filter((transaction) => transaction.account_owner?.role === "partner" && transaction.category?.name === "Papaya Kids");
+  for (let index = 0; index < partnerPapayaKids.length; index += 500) {
+    const { error } = await supabase.from("transactions").update({
+      beneficiary_scope: "personal",
+      location_period_id: null,
+      travel_origin: null,
+      travel_destination: null,
+      travel_date: null,
+      merchant_country: null,
+    }).eq("user_id", userId).in("id", partnerPapayaKids.slice(index, index + 500).map((transaction) => transaction.id));
+    if (error) throw error;
+  }
+  for (const transaction of partnerPapayaKids) {
+    transaction.beneficiary_scope = "personal";
+    transaction.location_period = null;
+    transaction.travel_destination = null;
+    transaction.merchant_country = null;
   }
 
   const therapyRows = transactions.filter((transaction) => /daniel\s+jesica\s+solange/i.test(cleanDescription(transaction.description)));
@@ -349,7 +403,7 @@ async function applyConfirmedFundingAttributions(supabase: SupabaseClient, userI
   if (!luciana || !julian) return;
 
   const lucianaFunding = transactions.filter((transaction) => {
-    if (transaction.account_owner?.role !== "self" || transaction.kind !== "transfer" || transaction.status !== "posted") return false;
+    if (transaction.account_owner?.role !== "self" || transaction.kind !== "transfer" || transaction.status !== "posted" || transaction.reimbursement_status === "settled") return false;
     const holder = typeof transaction.metadata?.withdrawAccountHolderName === "string" ? transaction.metadata.withdrawAccountHolderName : "";
     return /julian(?:\s+aaron)?\s+stivelman/i.test(`${holder} ${transaction.description}`);
   });

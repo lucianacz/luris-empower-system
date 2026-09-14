@@ -1,4 +1,5 @@
 import { rebuildSpendingIntelligence } from "@/lib/intelligence/persist";
+import { syncConfirmedCashExpenses } from "@/lib/cash/sync";
 import { syncJulianConfirmedTrips } from "@/lib/locations/confirmed-trips";
 import { syncSatuLagiProject } from "@/lib/property/sync";
 import { hasSupabaseEnv } from "@/lib/supabase/config";
@@ -7,7 +8,7 @@ import { createClient } from "@/lib/supabase/server";
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
-const profileVersion = "confirmed-profile-2026-09-13-v5";
+const profileVersion = "confirmed-profile-2026-09-13-v6";
 const periods = [
   { name: "Mexico", countryCode: "MX", countryName: "Mexico", currency: "MXN", startsOn: "2026-01-10", endsOn: "2026-03-06", periodType: "temporary_stay", tripPurpose: null },
   { name: "Miami", countryCode: "US", countryName: "United States", currency: "USD", startsOn: "2026-03-07", endsOn: "2026-03-21", periodType: "temporary_stay", tripPurpose: null },
@@ -60,9 +61,10 @@ export async function POST() {
   if (canadaTagError) return Response.json({ error: canadaTagError.message }, { status: 422 });
 
   const trips = await syncJulianConfirmedTrips(supabase, user.id);
+  const cash = await syncConfirmedCashExpenses(supabase, user.id);
   const intelligence = await rebuildSpendingIntelligence(supabase, user.id);
   const property = await syncSatuLagiProject(supabase, user.id);
-  const { error: saveMarkerError } = await supabase.from("insights").upsert({ user_id: user.id, insight_key: profileVersion, insight_type: "system", title: "Confirmed profile data synchronized", body: "Luciana and Julian ownership, the confirmed 2026 location timeline, and the latest merchant rules have been applied.", priority: 0, transaction_ids: [], metadata: { hidden: true } }, { onConflict: "user_id,insight_key" });
+  const { error: saveMarkerError } = await supabase.from("insights").upsert({ user_id: user.id, insight_key: profileVersion, insight_type: "system", title: "Confirmed profile data synchronized", body: "Ownership, confirmed locations, cash rent, Satu Lagi dates, and the latest merchant rules have been applied.", priority: 0, transaction_ids: [], metadata: { hidden: true } }, { onConflict: "user_id,insight_key" });
   if (saveMarkerError) return Response.json({ error: saveMarkerError.message }, { status: 422 });
-  return Response.json({ changed: true, message: "Satu Lagi, therapy, merchant rules, ownership, and confirmed trips were synchronized.", intelligence, property, trips });
+  return Response.json({ changed: true, message: "Cash rent, Satu Lagi, merchant rules, ownership, and confirmed trips were synchronized.", intelligence, property, trips, cash });
 }

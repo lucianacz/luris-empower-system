@@ -51,6 +51,13 @@ describe("default expense categories", () => {
     expect(classify("OXXO GAS 1234")).toBe("Fuel & gas");
     expect(classify("OPEN25HS")).toBe("Groceries");
     expect(classify("NEWGARDEN")).toBe("Groceries");
+    expect(classify("WHOLEFDS MTM #10781")).toBe("Groceries");
+    expect(classify("Card charge (VOLARIS U)")).toBe("Flights");
+    expect(classify("Card charge (SHELL OIL57543704415)")).toBe("Fuel & gas");
+    expect(classify("Card charge (DROGARIA SAO PAULO SA)")).toBe("Pharmacy");
+    expect(classify("Card charge (WM SUPERCENTER #4332)")).toBe("Groceries");
+    expect(classify("Card charge (REST COMPA CHAVA ROMA)")).toBe("Dining out");
+    expect(classify("SP OPUS ART SUPPLIES")).toBe("Shopping");
     expect(matchKnownMerchant("SP SWEET-CHEMISTRY-SKI")?.excludedFromTotals).toBe(true);
     expect(matchKnownMerchant("OPENAI *CHATGPT SUBSCR")?.recurrenceHint).toBe("monthly");
     expect(matchKnownMerchant("Card charge (GOOGLE *Google One)")?.recurrenceHint).toBe("annual");
@@ -96,6 +103,8 @@ describe("default expense categories", () => {
     expect(resolvedKnownMerchantKind(matchKnownMerchant("Moved to DolarApp (ARQ)"), "-500", "unknown")).toBe("transfer");
     expect(resolvedKnownMerchantKind(matchKnownMerchant("Deel Balance"), "500", "unknown")).toBe("transfer");
     expect(resolvedKnownMerchantKind(matchKnownMerchant("Payment from Deel"), "500", "income")).toBe("transfer");
+    expect(resolvedKnownMerchantKind(matchKnownMerchant("Payment from Julian Aaron Stivelman"), "305", "income")).toBe("transfer");
+    expect(matchKnownMerchant("Payment from Julian Aaron Stivelman")?.excludedFromTotals).toBe(true);
     expect(matchKnownMerchant("Payment to Julian Aaron Stivelman", { amount: "-60000", currency: "USD" })?.categoryName).toBe("Satu Lagi Villa");
     expect(matchKnownMerchant("Payment to Julian Aaron Stivelman", { amount: "-79", currency: "USD" })?.categoryName).not.toBe("Satu Lagi Villa");
     expect(matchKnownMerchant("Payment to Julian Aaron Stivelman", { amount: "-60000", currency: "ARS" })?.categoryName).not.toBe("Satu Lagi Villa");

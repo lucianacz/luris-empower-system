@@ -76,8 +76,8 @@ export async function syncSatuLagiProject(supabase: SupabaseClient, userId: stri
   const manualExpenses = [
     { manual_key: "julian-cash-2026-04-20-land-48000", paid_by_id: julian.id, description: "Cash payment for Satu Lagi House", transaction_label: "Land payment · cash", expense_type: "land_purchase", amount: 48_000, paid_on: "2026-04-20", notes: "Cash payment manually confirmed by Luciana." },
     { manual_key: "julian-cash-2026-05-30-land-8000", paid_by_id: julian.id, description: "Cash payment for Satu Lagi House", transaction_label: "Land payment · cash", expense_type: "land_purchase", amount: 8_000, paid_on: "2026-05-30", notes: "Cash payment manually confirmed by Luciana." },
-    { manual_key: "julian-cash-fence-682", paid_by_id: julian.id, description: "Cash payment for the fence", transaction_label: "Fence · paid by Julian", expense_type: "fence", amount: 682, paid_on: null, notes: "Cash amount confirmed; payment date was not provided." },
-    { manual_key: "luciana-cash-fence-600", paid_by_id: luciana.id, description: "Cash payment for the fence", transaction_label: "Fence · paid by Luciana", expense_type: "fence", amount: 600, paid_on: null, notes: "Cash amount confirmed; payment date was not provided." },
+    { manual_key: "julian-cash-fence-682", paid_by_id: julian.id, description: "Cash payment for the fence", transaction_label: "Fence · paid by Julian", expense_type: "fence", amount: 682, paid_on: "2026-07-09", notes: "Cash amount and July 9 payment date manually confirmed by Luciana." },
+    { manual_key: "luciana-cash-fence-600", paid_by_id: luciana.id, description: "Cash payment for the fence", transaction_label: "Fence · paid by Luciana", expense_type: "fence", amount: 600, paid_on: "2026-07-09", notes: "Cash amount and July 9 payment date manually confirmed by Luciana." },
   ] as const;
 
   for (const expense of manualExpenses) {
