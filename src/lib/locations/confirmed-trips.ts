@@ -54,6 +54,30 @@ export async function syncJulianConfirmedTrips(supabase: SupabaseClient, userId:
       .gte("occurred_at", `${trip.startsOn}T00:00:00Z`)
       .lte("occurred_at", `${trip.endsOn}T23:59:59Z`);
     if (transactionError) throw transactionError;
+
+    // This LATAM charge predates the stay because the ticket was purchased in
+    // advance. Keep the purchase date intact while linking the travel date and
+    // destination to Julian's confirmed personal Brazil trip.
+    if (trip.countryCode === "BR") {
+      const { data: advanceFlights, error: flightLookupError } = await supabase.from("transactions")
+        .select("id,metadata")
+        .eq("user_id", userId)
+        .eq("account_owner_id", julian.id)
+        .ilike("description", "%LA LATAM XP%")
+        .gte("occurred_at", "2025-11-01T00:00:00Z")
+        .lte("occurred_at", "2025-11-10T23:59:59Z");
+      if (flightLookupError) throw flightLookupError;
+      for (const flight of advanceFlights ?? []) {
+        const { error: flightUpdateError } = await supabase.from("transactions").update({
+          travel_destination: "BR",
+          travel_date: trip.startsOn,
+          beneficiary_scope: "personal",
+          transaction_label: "Flight to Brazil · Julian's personal trip",
+          metadata: { ...(flight.metadata ?? {}), tripAttribution: "Julian Brazil 2025-12-23 to 2026-01-04", attributionSource: "user-confirmed trip and advance-purchase timing" },
+        }).eq("user_id", userId).eq("id", flight.id);
+        if (flightUpdateError) throw flightUpdateError;
+      }
+    }
   }
 
   return { periodIds };
