@@ -9,6 +9,7 @@ import { inferLocationSuggestions } from "@/lib/locations/inference";
 import { markDuplicateFingerprints } from "@/lib/import/runtime-duplicates";
 import { cleanDescription } from "@/lib/import/normalize";
 import type { WorkspaceTransaction } from "@/lib/workspace/demo";
+import { currentFinanceDate } from "@/lib/dates/current-date";
 
 export async function GET() {
   if (!hasSupabaseEnv()) return Response.json(createEmptyWorkspace("signed-out"));
@@ -35,7 +36,7 @@ export async function GET() {
     if (transaction.metadata?.isDuplicate === true && transaction.import_batch_id) counts.set(transaction.import_batch_id, (counts.get(transaction.import_batch_id) ?? 0) + 1);
     return counts;
   }, new Map<string, number>());
-  const asOfDate = new Date().toISOString().slice(0, 10);
+  const asOfDate = currentFinanceDate();
   const normalizedLocationPeriods = (locationPeriods.data ?? []).map(normalizeLocationPeriod);
   const intelligence = analyzeRecurring(transactions, asOfDate);
   const learnedHints = (locationHints.data ?? []).flatMap((hint) => {

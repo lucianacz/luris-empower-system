@@ -8,6 +8,7 @@ import type { WorkspaceTransaction } from "@/lib/workspace/demo";
 import { uniqueByFingerprint } from "@/lib/import/runtime-duplicates";
 import { backfillEstimatedReportingValues } from "@/lib/exchange-rates/backfill";
 import { analyzeRecurring } from "./recurring";
+import { currentFinanceDate } from "@/lib/dates/current-date";
 
 export async function rebuildSpendingIntelligence(supabase: SupabaseClient, userId: string) {
   const categoryIds = await ensureDefaultCategories(supabase, userId);
@@ -17,7 +18,7 @@ export async function rebuildSpendingIntelligence(supabase: SupabaseClient, user
   await applySpecificCategoryRefinements(supabase, userId, transactions, categoryIds);
   await applyHospitalAlemanRule(supabase, userId, transactions, categoryIds.get("Health insurance") ?? null);
   const estimatedReportingValueCount = await backfillEstimatedReportingValues(supabase, userId);
-  const analysis = analyzeRecurring(uniqueByFingerprint(transactions), new Date().toISOString().slice(0, 10));
+  const analysis = analyzeRecurring(uniqueByFingerprint(transactions), currentFinanceDate());
   let obligationCount = 0;
 
   for (const pattern of analysis.patterns) {
