@@ -32,6 +32,18 @@ describe("recurring expense intelligence", () => {
     expect(result.questions.some((question) => question.type === "recurring_missing_month")).toBe(true);
   });
 
+  it("uses confirmed service-month allocations to close missing and doubled-payment questions", () => {
+    const hospital = (id: string, date: string, amount: string) => ({ ...payment(id, date, amount), description: "Hospital Alemán", merchant_name: "Hospital Alemán", merchant_key: "hospital alemán" });
+    const september = { ...hospital("sep", "2026-09-06", "-262.73"), expense_allocations: [
+      { id: "aug-allocation", service_month: "2026-08-01", amount: "192814", currency: "ARS", reporting_amount: "129.83279139", reporting_currency: "USD", is_estimated: false },
+      { id: "sep-allocation", service_month: "2026-09-01", amount: "197364.95", currency: "ARS", reporting_amount: "132.89720861", reporting_currency: "USD", is_estimated: false },
+    ] };
+    const result = analyzeRecurring([hospital("jun", "2026-06-05", "-126"), hospital("jul", "2026-07-05", "-128"), september], "2026-09-14");
+    expect(result.patterns[0].missingMonths).not.toContain("2026-08");
+    expect(result.patterns[0].doubledTransactionIds).not.toContain("sep");
+    expect(result.questions.some((question) => ["recurring_missing_month", "possible_multi_period_payment"].includes(question.type))).toBe(false);
+  });
+
   it("detects an annual subscription from two yearly charges", () => {
     const first = { ...payment("annual-1", "2025-04-12", "-240"), currency: "USD", category_id: "subscriptions", category: { name: "Subscriptions & software", life_area: "Digital", is_essential: false, color: "#6c63a8" } };
     const second = { ...first, id: "annual-2", occurred_at: "2026-04-12T00:00:00Z" };
@@ -76,6 +88,22 @@ describe("recurring expense intelligence", () => {
     const patterns = analyzeRecurring([google, ...chatgpt], "2026-09-13").patterns;
     expect(patterns.find((pattern) => pattern.key === "google one")).toMatchObject({ providerName: "Google One", frequency: "annual", isSubscription: true });
     expect(patterns.find((pattern) => pattern.key === "chatgpt")).toMatchObject({ providerName: "ChatGPT", frequency: "monthly", latestAmount: 100, status: "active" });
+  });
+
+  it("keeps each person's subscription cycle separate", () => {
+    const luciana = { id: "luciana", display_name: "Luciana Czikk", role: "self" };
+    const julian = { id: "julian", display_name: "Julian Stivelman", role: "partner" };
+    const rows = [
+      { ...knownPayment("l-apr", "2026-04-04", "-100", "OPENAI *CHATGPT SUBSCR", "ChatGPT", "chatgpt"), account_owner: luciana },
+      { ...knownPayment("l-may", "2026-05-04", "-100", "OPENAI *CHATGPT SUBSCR", "ChatGPT", "chatgpt"), account_owner: luciana },
+      { ...knownPayment("l-jun", "2026-06-04", "-100", "OPENAI *CHATGPT SUBSCR", "ChatGPT", "chatgpt"), account_owner: luciana },
+      { ...knownPayment("j-apr", "2026-04-21", "-100", "OPENAI *CHATGPT SUBSCR", "ChatGPT", "chatgpt"), account_owner: julian },
+      { ...knownPayment("j-may", "2026-05-21", "-100", "OPENAI *CHATGPT SUBSCR", "ChatGPT", "chatgpt"), account_owner: julian },
+      { ...knownPayment("j-jun", "2026-06-21", "-100", "OPENAI *CHATGPT SUBSCR", "ChatGPT", "chatgpt"), account_owner: julian },
+    ];
+    const result = analyzeRecurring(rows, "2026-06-30");
+    expect(result.patterns.filter((pattern) => pattern.merchantKey === "chatgpt")).toHaveLength(2);
+    expect(result.questions.some((question) => question.type === "recurring_two_payments")).toBe(false);
   });
 
   it("accepts both April ChatGPT charges and uses the new plan as its price baseline", () => {

@@ -5,7 +5,7 @@ import { cleanDescription } from "@/lib/import/normalize";
 import type { TransactionKind } from "@/lib/import/types";
 import { canonicalMerchant } from "@/lib/reporting/report";
 import type { WorkspaceTransaction } from "@/lib/workspace/demo";
-import { uniqueByFingerprint } from "@/lib/import/runtime-duplicates";
+import { deduplicateTransactionRows } from "@/lib/import/runtime-duplicates";
 import { backfillEstimatedReportingValues } from "@/lib/exchange-rates/backfill";
 import { analyzeRecurring } from "./recurring";
 import { currentFinanceDate } from "@/lib/dates/current-date";
@@ -27,18 +27,18 @@ export async function rebuildSpendingIntelligence(supabase: SupabaseClient, user
   await restoreManualBeneficiaryScopes(supabase, userId, transactions);
   const automaticallyDismissedQuestions = await dismissUnnecessaryQuestions(supabase, userId, transactions);
   const estimatedReportingValueCount = await backfillEstimatedReportingValues(supabase, userId);
-  const analysis = analyzeRecurring(uniqueByFingerprint(transactions), currentFinanceDate());
+  const analysis = analyzeRecurring(deduplicateTransactionRows(transactions), currentFinanceDate());
   let obligationCount = 0;
 
   for (const pattern of analysis.patterns) {
     const related = transactions.filter((transaction) => pattern.transactionIds.includes(transaction.id));
-    const hospitalAleman = /hospital\s*alem[aá]n|hospitalaleman/i.test(`${pattern.key} ${pattern.providerName}`);
+    const hospitalAleman = /hospital\s*alem[aá]n|hospitalaleman/i.test(`${pattern.merchantKey} ${pattern.providerName}`);
     const categoryId = hospitalAleman ? categoryIds.get("Health insurance") ?? null : related.find((transaction) => transaction.category_id)?.category_id ?? null;
     const providerName = hospitalAleman ? "Hospital Alemán" : pattern.providerName;
     const countryCode = hospitalAleman ? "AR" : related.find((transaction) => transaction.merchant_country)?.merchant_country ?? null;
-    const { data: merchant, error: merchantError } = await supabase.from("merchant_profiles").upsert({ user_id: userId, merchant_key: pattern.key, display_name: providerName, category_id: categoryId, country_code: countryCode }, { onConflict: "user_id,merchant_key" }).select("id").single();
+    const { data: merchant, error: merchantError } = await supabase.from("merchant_profiles").upsert({ user_id: userId, merchant_key: pattern.merchantKey, display_name: providerName, category_id: categoryId, country_code: countryCode }, { onConflict: "user_id,merchant_key" }).select("id").single();
     if (merchantError) throw merchantError;
-    const { data: obligation, error: obligationError } = await supabase.from("recurring_obligations").upsert({ user_id: userId, merchant_profile_id: merchant.id, provider_name: providerName, merchant_key: pattern.key, category_id: categoryId, country_code: countryCode, frequency: hospitalAleman ? "monthly" : pattern.frequency, status: hospitalAleman ? "active" : pattern.status, expected_amount: pattern.medianAmount || null, currency: pattern.currency, next_expected_on: pattern.expectedNextPayment }, { onConflict: "user_id,merchant_key" }).select("id").single();
+    const { data: obligation, error: obligationError } = await supabase.from("recurring_obligations").upsert({ user_id: userId, owner_person_id: pattern.ownerPersonId, merchant_profile_id: merchant.id, provider_name: providerName, merchant_key: pattern.merchantKey, category_id: categoryId, country_code: countryCode, frequency: hospitalAleman ? "monthly" : pattern.frequency, status: hospitalAleman ? "active" : pattern.status, expected_amount: pattern.medianAmount || null, currency: pattern.currency, next_expected_on: pattern.expectedNextPayment }, { onConflict: "user_id,merchant_key,owner_person_id" }).select("id").single();
     if (obligationError) throw obligationError;
     obligationCount += 1;
     const { data: existingLinks, error: existingLinksError } = await supabase.from("recurring_obligation_transactions").select("transaction_id").eq("recurring_obligation_id", obligation.id).eq("user_id", userId);
@@ -589,9 +589,9 @@ async function applyHospitalAlemanRule(supabase: SupabaseClient, userId: string,
 async function loadTransactions(supabase: SupabaseClient, userId: string) {
   const transactions: WorkspaceTransaction[] = [];
   for (let from = 0; ; from += 1000) {
-    const { data, error } = await supabase.from("transactions").select("id,fingerprint,occurred_at,description,transaction_label,amount,currency,original_currency,kind,status,excluded_from_totals,fee_amount,category_id,merchant_name,merchant_key,merchant_country,travel_destination,beneficiary_scope,reimbursement_status,metadata,category:categories(name,life_area,is_essential,is_extraordinary,color),account_owner:people!transactions_account_owner_id_fkey(id,display_name,role),location_period:location_periods(id,starts_on,ends_on,status,period_type,trip_purpose,confidence,explanation,evidence,location:locations(id,name,country_code,country_name,default_currency))").eq("user_id", userId).order("occurred_at").range(from, from + 999);
+    const { data, error } = await supabase.from("transactions").select("id,fingerprint,created_at,occurred_at,description,transaction_label,amount,currency,original_amount,original_currency,kind,status,excluded_from_totals,fee_amount,category_id,merchant_name,merchant_key,merchant_country,travel_destination,beneficiary_scope,reimbursement_status,metadata,category:categories(name,life_area,is_essential,is_extraordinary,color),account_owner:people!transactions_account_owner_id_fkey(id,display_name,role),paid_by:people!transactions_paid_by_id_fkey(id,display_name,role),expense_allocations:expense_period_allocations(id,service_month,amount,currency,reporting_amount,reporting_currency,is_estimated),location_period:location_periods(id,starts_on,ends_on,status,period_type,trip_purpose,confidence,explanation,evidence,location:locations(id,name,country_code,country_name,default_currency))").eq("user_id", userId).order("occurred_at").range(from, from + 999);
     if (error) throw error;
-    transactions.push(...(data ?? []).map((row) => ({ ...row, category: first(row.category), account: null } as unknown as WorkspaceTransaction)));
+    transactions.push(...(data ?? []).map((row) => ({ ...row, category: first(row.category), account_owner: first(row.account_owner), paid_by: first(row.paid_by), account: null } as unknown as WorkspaceTransaction)));
     if (!data || data.length < 1000) break;
   }
   return transactions;

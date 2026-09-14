@@ -3,13 +3,14 @@ import { syncConfirmedCashExpenses } from "@/lib/cash/sync";
 import { syncJulianConfirmedTrips } from "@/lib/locations/confirmed-trips";
 import { syncSatuLagiProject } from "@/lib/property/sync";
 import { syncConfirmedSavingsGoals } from "@/lib/savings/sync";
+import { syncConfirmedPlanningContext } from "@/lib/planning/sync";
 import { hasSupabaseEnv } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
-const profileVersion = "confirmed-profile-2026-09-14-v13";
+const profileVersion = "confirmed-profile-2026-09-14-v14";
 const periods = [
   { name: "Argentina", countryCode: "AR", countryName: "Argentina", currency: "ARS", startsOn: "2025-12-23", endsOn: "2026-01-09", periodType: "temporary_stay", tripPurpose: null },
   { name: "Mexico", countryCode: "MX", countryName: "Mexico", currency: "MXN", startsOn: "2026-01-10", endsOn: "2026-03-06", periodType: "temporary_stay", tripPurpose: null },
@@ -105,7 +106,8 @@ export async function POST() {
   const intelligence = await rebuildSpendingIntelligence(supabase, user.id);
   const property = await syncSatuLagiProject(supabase, user.id);
   const savings = await syncConfirmedSavingsGoals(supabase, user.id);
+  const planning = await syncConfirmedPlanningContext(supabase, user.id);
   const { error: saveMarkerError } = await supabase.from("insights").upsert({ user_id: user.id, insight_key: profileVersion, insight_type: "system", title: "Confirmed profile data synchronized", body: "Ownership, corrected location periods, savings goals, editable scope rules, approximate USD values, cash rent, Satu Lagi dates, and merchant rules have been applied.", priority: 0, transaction_ids: [], metadata: { hidden: true } }, { onConflict: "user_id,insight_key" });
   if (saveMarkerError) return Response.json({ error: saveMarkerError.message }, { status: 422 });
-  return Response.json({ changed: true, message: "Locations, savings goals, Satu Lagi, merchant rules, ownership, and confirmed trips were synchronized.", intelligence, property, trips, cash, savings });
+  return Response.json({ changed: true, message: "Locations, savings goals, current Deel balances, planning assumptions, merchant rules, ownership, and confirmed trips were synchronized.", intelligence, property, trips, cash, savings, planning });
 }

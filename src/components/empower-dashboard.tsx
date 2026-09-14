@@ -11,6 +11,7 @@ import {
   Link2,
   MapPin,
   Menu,
+  MessageCircle,
   PiggyBank,
   RefreshCw,
   Repeat2,
@@ -26,6 +27,7 @@ import {
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CashWithdrawals } from "@/components/cash-withdrawals";
 import { FilesByMonth } from "@/components/files-by-month";
+import { FinancialPlanner } from "@/components/financial-planner";
 import type { FinanceMutate, TransactionSelection } from "@/components/finance-ui-types";
 import { ImportWorkspace } from "@/components/import-workspace";
 import { IncomeSavings } from "@/components/income-savings";
@@ -39,15 +41,16 @@ import { TransactionLedger } from "@/components/transaction-ledger";
 import { SYSTEM_START_DATE } from "@/lib/reporting/periods";
 import { createEmptyWorkspace, type WorkspaceData } from "@/lib/workspace/demo";
 
-type View = "spending" | "income" | "savings" | "property" | "transactions" | "questions" | "locations" | "recurring" | "cash" | "files" | "imports" | "investments" | "transfers" | "settings";
+type View = "spending" | "income" | "savings" | "planner" | "property" | "transactions" | "questions" | "locations" | "recurring" | "cash" | "files" | "imports" | "investments" | "transfers" | "settings";
 export type MoneyView = "luciana" | "shared" | "julian";
 const moneyViews = new Set<MoneyView>(["luciana", "shared", "julian"]);
-const views = new Set<View>(["spending", "income", "savings", "property", "transactions", "questions", "locations", "recurring", "cash", "files", "imports", "investments", "transfers", "settings"]);
+const views = new Set<View>(["spending", "income", "savings", "planner", "property", "transactions", "questions", "locations", "recurring", "cash", "files", "imports", "investments", "transfers", "settings"]);
 
 const viewTitles: Record<View, string> = {
   spending: "How you use your money",
   income: "Income and approximate savings",
   savings: "Savings plan",
+  planner: "Financial planner",
   property: "Satu Lagi House",
   transactions: "Transactions and evidence",
   questions: "Questions inbox",
@@ -192,6 +195,7 @@ export function EmpowerDashboard() {
           <NavItem icon={LayoutDashboard} label="Spending" active={currentView === "spending"} onSelect={() => navigate("spending")} />
           <NavItem icon={TrendingUp} label="Income & savings" active={currentView === "income"} onSelect={() => navigate("income")} />
           <NavItem icon={Target} label="Savings plan" active={currentView === "savings"} onSelect={() => navigate("savings")} />
+          <NavItem icon={MessageCircle} label="Ask the planner" active={currentView === "planner"} onSelect={() => navigate("planner")} />
           <NavItem icon={House} label="Satu Lagi house" active={currentView === "property"} onSelect={() => navigate("property")} />
           <NavItem icon={WalletCards} label="Transactions" active={currentView === "transactions"} onSelect={() => { setSelection(null); navigate("transactions"); }} />
           <NavItem icon={CircleHelp} label="Questions" badge={pendingCount} active={currentView === "questions"} onSelect={() => navigate("questions")} />
@@ -221,6 +225,7 @@ export function EmpowerDashboard() {
         {currentView === "spending" ? <ReportingWorkspace workspace={visibleWorkspace} moneyView={moneyView} openTransactions={openTransactions} /> : null}
         {currentView === "income" ? <IncomeSavings workspace={moneyView === "shared" ? systemWorkspace : visibleWorkspace} combinedHousehold={moneyView === "shared"} openTransactions={openTransactions} /> : null}
         {currentView === "savings" ? <SavingsPlan workspace={systemWorkspace} profile={moneyView} mutate={mutate} /> : null}
+        {currentView === "planner" ? <FinancialPlanner workspace={moneyView === "shared" ? systemWorkspace : visibleWorkspace} profile={moneyView} /> : null}
         {currentView === "property" ? <PropertyProject workspace={visibleWorkspace} profile={moneyView} openTransactions={openTransactions} /> : null}
         {currentView === "transactions" ? <><TransactionLedger workspace={transactionWorkspace} mutate={mutate} selection={selection} clearSelection={() => setSelection(null)} /><CategoryCreator disabled={workspace.mode !== "live"} mutate={mutate} /></> : null}
         {currentView === "questions" ? <QuestionsInbox workspace={visibleWorkspace} mutate={mutate} openTransactions={openTransactions} /> : null}
@@ -285,6 +290,8 @@ function profileWorkspace(workspace: WorkspaceData, view: MoneyView): WorkspaceD
     locationPeriods: visibleLocationPeriods,
     propertyProjects: workspace.propertyProjects.filter((project) => propertyProjectIds.has(project.id)),
     propertyExpenses,
+    balanceSnapshots: view === "shared" ? workspace.balanceSnapshots : workspace.balanceSnapshots.filter((snapshot) => snapshot.owner_person_id === personId),
+    planningProfiles: view === "shared" ? workspace.planningProfiles : workspace.planningProfiles.filter((planningProfile) => planningProfile.person_id === personId),
     recurringObligations: workspace.recurringObligations.filter((obligation) => evidenceIntersects(obligation.transaction_ids)),
     insights: workspace.insights.filter((insight) => evidenceIntersects(insight.transactionIds)),
     transferChains: workspace.transferChains.filter((chain) => chain.members.some((member) => member.transaction && transactionIds.has(member.transaction.id))),

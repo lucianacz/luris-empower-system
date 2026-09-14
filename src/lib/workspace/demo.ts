@@ -89,6 +89,8 @@ export interface WorkspaceLocationPeriod {
 
 export interface WorkspaceRecurringObligation {
   id: string;
+  owner_person_id: string | null;
+  owner: { id: string; display_name: string; role: string } | null;
   provider_name: string;
   merchant_key: string;
   frequency: "weekly" | "monthly" | "quarterly" | "annual" | "uncertain";
@@ -99,6 +101,29 @@ export interface WorkspaceRecurringObligation {
   next_expected_on: string | null;
   category: { name: string; parent?: { name: string } | null } | null;
   transaction_ids: string[];
+}
+
+export interface WorkspaceBalanceSnapshot {
+  id: string;
+  owner_person_id: string;
+  institution: string;
+  amount: string;
+  currency: string;
+  balance_date: string;
+  notes: string | null;
+  owner: { id: string; display_name: string; role: string } | null;
+}
+
+export interface WorkspacePlanningProfile {
+  id: string;
+  person_id: string;
+  expected_monthly_income: string | null;
+  income_currency: string;
+  income_day: number | null;
+  safety_months: string;
+  income_is_variable: boolean;
+  notes: string | null;
+  person: { id: string; display_name: string; role: string } | null;
 }
 
 export interface WorkspaceInsight {
@@ -268,6 +293,8 @@ export interface WorkspaceData {
   propertyProjects: WorkspacePropertyProject[];
   propertyExpenses: WorkspacePropertyExpense[];
   savingsGoals: WorkspaceSavingsGoal[];
+  balanceSnapshots: WorkspaceBalanceSnapshot[];
+  planningProfiles: WorkspacePlanningProfile[];
   locationPeriods: WorkspaceLocationPeriod[];
   recurringObligations: WorkspaceRecurringObligation[];
   insights: WorkspaceInsight[];
@@ -295,6 +322,8 @@ export function createEmptyWorkspace(mode: WorkspaceData["mode"] = "signed-out",
     propertyProjects: [],
     propertyExpenses: [],
     savingsGoals: [],
+    balanceSnapshots: [],
+    planningProfiles: [],
     locationPeriods: [],
     recurringObligations: [],
     insights: [],
@@ -378,8 +407,10 @@ export const demoWorkspace: WorkspaceData = {
   propertyProjects: [],
   propertyExpenses: [],
   savingsGoals: [],
+  balanceSnapshots: [],
+  planningProfiles: [],
   locationPeriods: demoLocations,
-  recurringObligations: [{ id: "demo-recurring-insurance", provider_name: "Hospital Alemán", merchant_key: "hospital alemán", frequency: "monthly", status: "active", country_code: "AR", expected_amount: "120", currency: "USD", next_expected_on: "2026-09-05", category: { name: "Health insurance", parent: { name: "Health" } }, transaction_ids: demoInsuranceIds }],
+  recurringObligations: [{ id: "demo-recurring-insurance", owner_person_id: null, owner: null, provider_name: "Hospital Alemán", merchant_key: "hospital alemán", frequency: "monthly", status: "active", country_code: "AR", expected_amount: "120", currency: "USD", next_expected_on: "2026-09-05", category: { name: "Health insurance", parent: { name: "Health" } }, transaction_ids: demoInsuranceIds }],
   insights: [{ key: "demo-uncategorized", title: "Six payments still need a category", body: "Open the supporting transactions and teach Empower what they represent.", priority: 90, transactionIds: demoExpenseTransactions.filter((transaction) => !transaction.category_id).map((transaction) => transaction.id) }],
   dataQuality: { score: 82, uncategorized: 6, missingFx: 0, unansweredQuestions: 2, uncertainLocations: 0, recurringUnidentified: 0, uncertainCoverage: 0 },
   suggestedQuestions: [],
