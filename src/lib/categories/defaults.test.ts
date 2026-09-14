@@ -33,7 +33,7 @@ describe("default expense categories", () => {
     expect(classify("SEPHORA&#x20;CR")).toBe("Personal care");
     expect(classify("BKG*HOTEL AT BOOKING.C")).toBe("Hotels");
     expect(classify("MINISUPER WILLY WILLYS")).toBe("Groceries");
-    expect(classify("SERVICENTRO EL CONEJO")).toBe("Fuel & gas");
+    expect(classify("SERVICENTRO EL CONEJO")).toBe("Loan on card · cash returned");
     expect(classify("PARKING GARAGE")).toBe("Parking");
     expect(classify("ANIBAL MARCOS PAZ")).toBe("Diving & activities");
     expect(classify("Martin Ackerman")).toBe("Friends & social");
@@ -57,8 +57,12 @@ describe("default expense categories", () => {
     expect(matchKnownMerchant("SERVICENTRO EL CONEJO")?.reimbursementStatus).toBe("settled");
     expect(matchKnownMerchant("SERVICENTRO EL CONEJO")?.excludedFromTotals).toBe(true);
     expect(matchKnownMerchant("Juan Pablo Vaghi (company)")?.kind).toBe("income");
-    expect(matchKnownMerchant("Jazak VeEmatz LL")?.kind).toBe("transfer");
-    expect(matchKnownMerchant("Jazak VeEmatz LL")?.excludedFromTotals).toBe(true);
+    expect(matchKnownMerchant("Jazak VeEmatz LL")?.categoryName).toBe("Papaya Kids");
+    expect(matchKnownMerchant("Jazak VeEmatz LL")?.transactionLabel).toBe("Papaya Kids · Julian's company");
+    expect(matchKnownMerchant("LONGXIANG KNITTING CO., LIMITED")?.categoryName).toBe("Papaya Kids");
+    expect(matchKnownMerchant("Payment from GLOBAL ENCOUNTERS S.A")?.kind).toBe("income");
+    expect(matchKnownMerchant("ATM withdrawal (020002395)")?.transactionLabel).toBe("Cash withdrawal");
+    expect(matchKnownMerchant("Pablo Exequiel Buchholz")?.transactionLabel).toBe("Tattoo artist");
     expect(matchKnownMerchant("Baltodano Gomez Martin")?.categoryName).toBe("Satu Lagi Villa");
     expect(matchKnownMerchant("Baltodano Gomez Martin")?.excludedFromTotals).toBe(true);
     expect(matchKnownMerchant("Gutierrez Gonzalez Kaily Vanessa")?.categoryName).toBe("Satu Lagi Villa");
@@ -75,6 +79,8 @@ describe("default expense categories", () => {
     expect(parentOf("Therapy")).toBeNull();
     expect(parentOf("Workshops & classes")).toBe("Education");
     expect(defaultExpenseCategories.some((category) => category.name === "Pets")).toBe(false);
+    expect(defaultExpenseCategories.some((category) => category.name === "Papaya Kids")).toBe(true);
+    expect(defaultExpenseCategories.some((category) => category.name === "Loan on card · cash returned")).toBe(true);
   });
 
   it("turns negative known-provider transfers into spending but preserves positive refunds", () => {

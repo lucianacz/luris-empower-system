@@ -139,6 +139,7 @@ async function applyKnownMerchantRules(supabase: SupabaseClient, userId: string,
         category_id: categoryId,
         merchant_name: merchantName,
         merchant_key: merchantKey,
+        ...(rule.transactionLabel ? { transaction_label: rule.transactionLabel } : {}),
         ...(rule.countryCode ? { merchant_country: rule.countryCode } : {}),
         ...(rule.kind ? { kind: rule.kind } : {}),
         ...(rule.excludedFromTotals !== undefined ? { excluded_from_totals: rule.excludedFromTotals } : {}),
@@ -156,6 +157,7 @@ async function applyKnownMerchantRules(supabase: SupabaseClient, userId: string,
         transaction.category = rule.categoryName ? categoryFor(rule.categoryName) : null;
         transaction.merchant_name = merchantName;
         transaction.merchant_key = merchantKey;
+        if (rule.transactionLabel) transaction.transaction_label = rule.transactionLabel;
         if (rule.countryCode) transaction.merchant_country = rule.countryCode;
         if (rule.beneficiaryScope) transaction.beneficiary_scope = rule.beneficiaryScope;
         if (rule.reimbursementStatus) transaction.reimbursement_status = rule.reimbursementStatus;
@@ -208,10 +210,42 @@ async function applySpecificCategoryRefinements(supabase: SupabaseClient, userId
     if (error) throw error;
     for (const transaction of airbnb) transaction.merchant_country = null;
   }
+
+  const papayaKidsCategoryId = categoryIds.get("Papaya Kids");
+  const chineseCurrencyCompanyExpenses = transactions.filter((transaction) => {
+    const originalCurrency = transaction.original_currency?.toUpperCase();
+    return transaction.account_owner?.role === "partner"
+      && transaction.status === "posted"
+      && Number(transaction.amount) < 0
+      && (transaction.currency.toUpperCase() === "CNY" || originalCurrency === "CNY");
+  });
+  if (papayaKidsCategoryId && chineseCurrencyCompanyExpenses.length) {
+    for (let index = 0; index < chineseCurrencyCompanyExpenses.length; index += 500) {
+      const { error } = await supabase.from("transactions").update({
+        category_id: papayaKidsCategoryId,
+        kind: "expense",
+        excluded_from_totals: false,
+        beneficiary_scope: "personal",
+        transaction_label: "Papaya Kids · company expense",
+      }).eq("user_id", userId).in("id", chineseCurrencyCompanyExpenses.slice(index, index + 500).map((transaction) => transaction.id));
+      if (error) throw error;
+    }
+    for (const transaction of chineseCurrencyCompanyExpenses) {
+      transaction.category_id = papayaKidsCategoryId;
+      transaction.category = categoryFor("Papaya Kids");
+      transaction.kind = "expense";
+      transaction.excluded_from_totals = false;
+      transaction.beneficiary_scope = "personal";
+      transaction.transaction_label = "Papaya Kids · company expense";
+    }
+  }
 }
 
 async function applyHouseholdRules(supabase: SupabaseClient, userId: string, transactions: WorkspaceTransaction[]) {
   const sharedTravelAndCar = new Set(["Flights", "Diving & activities", "Hotels", "Car", "Car rental", "Car repairs", "Fuel & gas", "Parking", "Tolls & highways"]);
+  const sharedAsiaCategories = new Set(["Dining out", "Flights", "Entertainment"]);
+  const asiaCountryCodes = new Set(["BN", "BT", "CN", "HK", "ID", "IN", "JP", "KH", "KR", "LA", "LK", "MO", "MV", "MY", "NP", "PH", "SG", "TH", "TW", "VN"]);
+  const asiaCurrencies = new Set(["BND", "CNY", "HKD", "IDR", "INR", "JPY", "KRW", "LKR", "MOP", "MYR", "PHP", "SGD", "THB", "TWD", "VND"]);
   const sharedIds: string[] = [];
   const personalSoloTripIds: string[] = [];
 
@@ -226,10 +260,11 @@ async function applyHouseholdRules(supabase: SupabaseClient, userId: string, tra
     const isTravelOrCar = sharedTravelAndCar.has(categoryName ?? "");
     const isMexico = country === "MX";
     const isCostaRicaRestaurant = country === "CR" && categoryName === "Dining out";
+    const isSharedAsiaExpense = sharedAsiaCategories.has(categoryName ?? "") && (asiaCountryCodes.has(country ?? "") || asiaCurrencies.has(transaction.original_currency?.toUpperCase() ?? transaction.currency.toUpperCase()));
     const isYouTube = /youtube\s*\(via apple\)|apple\.com(?:\/|\s+)bill/i.test(`${transaction.merchant_name ?? ""} ${transaction.description}`) && Math.abs(Number(transaction.amount)) === 9.49;
 
     if (isSoloTrip) personalSoloTripIds.push(transaction.id);
-    else if (isTravelOrCar || isMexico || isCostaRicaRestaurant || isYouTube) sharedIds.push(transaction.id);
+    else if (isTravelOrCar || isMexico || isCostaRicaRestaurant || isSharedAsiaExpense || isYouTube) sharedIds.push(transaction.id);
   }
 
   for (let index = 0; index < sharedIds.length; index += 500) {
@@ -356,6 +391,8 @@ const defaultCategoryDetails: Record<string, Omit<NonNullable<WorkspaceTransacti
   "Satu Lagi Villa": { life_area: "Assets", is_essential: false, is_extraordinary: true, color: "#8a6545" },
   "Work tests": { life_area: "Work", is_essential: false, is_extraordinary: false, color: "#6f7782" },
   "Workshops & classes": { life_area: "Growth", is_essential: false, is_extraordinary: false, color: "#9a6b52" },
+  "Papaya Kids": { life_area: "Business", is_essential: false, is_extraordinary: false, color: "#b06d32" },
+  "Loan on card · cash returned": { life_area: "Financial", is_essential: false, is_extraordinary: true, color: "#8b7656" },
 };
 
 async function applyHospitalAlemanRule(supabase: SupabaseClient, userId: string, transactions: WorkspaceTransaction[], categoryId: string | null) {
@@ -383,7 +420,7 @@ async function applyHospitalAlemanRule(supabase: SupabaseClient, userId: string,
 async function loadTransactions(supabase: SupabaseClient, userId: string) {
   const transactions: WorkspaceTransaction[] = [];
   for (let from = 0; ; from += 1000) {
-    const { data, error } = await supabase.from("transactions").select("id,fingerprint,occurred_at,description,amount,currency,original_currency,kind,status,excluded_from_totals,fee_amount,category_id,merchant_name,merchant_key,merchant_country,travel_destination,beneficiary_scope,reimbursement_status,metadata,category:categories(name,life_area,is_essential,is_extraordinary,color),account_owner:people!transactions_account_owner_id_fkey(id,display_name,role),location_period:location_periods(id,starts_on,ends_on,status,period_type,trip_purpose,confidence,explanation,evidence,location:locations(id,name,country_code,country_name,default_currency))").eq("user_id", userId).order("occurred_at").range(from, from + 999);
+    const { data, error } = await supabase.from("transactions").select("id,fingerprint,occurred_at,description,transaction_label,amount,currency,original_currency,kind,status,excluded_from_totals,fee_amount,category_id,merchant_name,merchant_key,merchant_country,travel_destination,beneficiary_scope,reimbursement_status,metadata,category:categories(name,life_area,is_essential,is_extraordinary,color),account_owner:people!transactions_account_owner_id_fkey(id,display_name,role),location_period:location_periods(id,starts_on,ends_on,status,period_type,trip_purpose,confidence,explanation,evidence,location:locations(id,name,country_code,country_name,default_currency))").eq("user_id", userId).order("occurred_at").range(from, from + 999);
     if (error) throw error;
     transactions.push(...(data ?? []).map((row) => ({ ...row, category: first(row.category), account: null } as unknown as WorkspaceTransaction)));
     if (!data || data.length < 1000) break;

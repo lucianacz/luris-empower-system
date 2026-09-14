@@ -38,7 +38,6 @@ export class PayoneerCsvAdapter implements ImportAdapter {
       else if (/annual account fee|maintenance fee/.test(lower)) kind = "fee";
       else if (lower.startsWith("atm")) {
         kind = "cash_withdrawal";
-        warnings.push("Cash withdrawal excluded from spending until its use is classified.");
       } else warnings.push("Payoneer transaction needs classification.");
 
       return [createTransaction({

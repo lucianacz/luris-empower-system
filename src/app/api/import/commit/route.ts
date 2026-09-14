@@ -177,6 +177,7 @@ export async function POST(request: Request) {
           occurred_at: transaction.occurredAt,
           posted_at: transaction.postedAt,
           description: transaction.description,
+          transaction_label: known?.transactionLabel ?? (kind === "cash_withdrawal" ? "Cash withdrawal" : null),
           merchant_name: merchantName,
           merchant_key: canonicalMerchant(merchantName),
           merchant_country: known?.countryCode ?? normalizeUserCountryHint(transaction.metadata.merchantCountry),

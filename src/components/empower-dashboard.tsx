@@ -158,6 +158,11 @@ export function EmpowerDashboard() {
     navigate("transactions");
   };
   const visibleWorkspace = useMemo(() => profileWorkspace(workspace, moneyView), [moneyView, workspace]);
+  const transactionWorkspace = useMemo(() => {
+    if (!selection) return visibleWorkspace;
+    const selectedIds = new Set(selection.transactionIds);
+    return { ...visibleWorkspace, transactions: workspace.transactions.filter((transaction) => selectedIds.has(transaction.id)) };
+  }, [selection, visibleWorkspace, workspace.transactions]);
   const activeOwnerId = moneyView === "luciana"
     ? workspace.people.find((person) => person.role === "self")?.id ?? null
     : moneyView === "julian"
@@ -209,8 +214,8 @@ export function EmpowerDashboard() {
         </header>
         {notice ? <div role="status" className="mt-5 flex items-center justify-between gap-3 rounded-xl border border-[var(--line)] bg-[var(--surface)] px-4 py-3 text-sm"><span>{notice}</span><button aria-label="Dismiss message" onClick={() => setNotice("")}><X aria-hidden="true" className="size-4" /></button></div> : null}
         {currentView === "spending" ? <ReportingWorkspace workspace={visibleWorkspace} moneyView={moneyView} loading={loading} openTransactions={openTransactions} openQuestions={() => navigate("questions")} openLocations={() => navigate("locations")} /> : null}
-        {currentView === "income" ? <IncomeSavings workspace={visibleWorkspace} openTransactions={openTransactions} /> : null}
-        {currentView === "transactions" ? <><TransactionLedger workspace={visibleWorkspace} mutate={mutate} selection={selection} clearSelection={() => setSelection(null)} /><CategoryCreator disabled={workspace.mode !== "live"} mutate={mutate} /></> : null}
+        {currentView === "income" ? <IncomeSavings workspace={moneyView === "shared" ? workspace : visibleWorkspace} combinedHousehold={moneyView === "shared"} openTransactions={openTransactions} /> : null}
+        {currentView === "transactions" ? <><TransactionLedger workspace={transactionWorkspace} mutate={mutate} selection={selection} clearSelection={() => setSelection(null)} /><CategoryCreator disabled={workspace.mode !== "live"} mutate={mutate} /></> : null}
         {currentView === "questions" ? <QuestionsInbox workspace={visibleWorkspace} mutate={mutate} openTransactions={openTransactions} /> : null}
         {currentView === "locations" ? <LocationsAndStays workspace={visibleWorkspace} personId={activeOwnerId} mutate={mutate} openTransactions={openTransactions} /> : null}
         {currentView === "recurring" ? <RecurringExpenses workspace={visibleWorkspace} mutate={mutate} openTransactions={openTransactions} /> : null}

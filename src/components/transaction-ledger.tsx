@@ -24,7 +24,7 @@ export function TransactionLedger({ workspace, mutate, selection, clearSelection
     if (scope !== "all" && (transaction.beneficiary_scope ?? "personal") !== scope) return false;
     if (category === "uncategorized" && transaction.category_id) return false;
     if (category !== "all" && category !== "uncategorized" && transaction.category_id !== category) return false;
-    return (transaction.description + " " + (transaction.merchant_name ?? "") + " " + (transaction.account?.name ?? "")).toLocaleLowerCase().includes(search.toLocaleLowerCase());
+    return (transaction.description + " " + (transaction.transaction_label ?? "") + " " + (transaction.merchant_name ?? "") + " " + (transaction.account?.name ?? "")).toLocaleLowerCase().includes(search.toLocaleLowerCase());
   }), [category, kind, month, scope, search, selectedIds, status, workspace.transactions]);
   const live = workspace.mode === "live";
 
@@ -41,6 +41,13 @@ export function TransactionLedger({ workspace, mutate, selection, clearSelection
       : [{ kind: "personal", label: "Personal", percentage: 1 }];
     try {
       await mutate("/api/transactions/" + transactionId + "/splits", "PUT", { splits });
+    } catch (error) {
+      window.alert(messageOf(error));
+    }
+  };
+  const saveLabel = async (transactionId: string, transactionLabel: string) => {
+    try {
+      await mutate("/api/transactions/" + transactionId, "PATCH", { transactionLabel: transactionLabel.trim() || null, applyToSimilar: false });
     } catch (error) {
       window.alert(messageOf(error));
     }
@@ -70,7 +77,7 @@ export function TransactionLedger({ workspace, mutate, selection, clearSelection
       <table className="w-full min-w-[1280px] text-left text-sm">
         <thead className="bg-[var(--paper)] text-[11px] uppercase tracking-[0.08em] text-[var(--muted)]"><tr><th className="px-4 py-3">Payment date</th><th className="px-4 py-3">Merchant or description</th><th className="px-4 py-3">Category</th><th className="px-4 py-3">Location</th><th className="px-4 py-3">Original amount</th><th className="px-4 py-3">USD reporting value</th><th className="px-4 py-3">Service month</th><th className="px-4 py-3">Personal/shared</th></tr></thead>
         <tbody className="divide-y divide-[var(--line)]">
-          {rows.map((transaction) => <TransactionRow key={transaction.id} transaction={transaction} categoryOptions={expenseCategoryOptions} live={live} saveCategory={saveCategory} saveSplit={saveSplit} />)}
+          {rows.map((transaction) => <TransactionRow key={transaction.id} transaction={transaction} categoryOptions={expenseCategoryOptions} live={live} saveCategory={saveCategory} saveSplit={saveSplit} saveLabel={saveLabel} />)}
           {!rows.length ? <tr><td colSpan={8} className="p-8 text-center text-sm text-[var(--muted)]">No transactions match this evidence filter.</td></tr> : null}
         </tbody>
       </table>
@@ -78,7 +85,7 @@ export function TransactionLedger({ workspace, mutate, selection, clearSelection
   </section>;
 }
 
-function TransactionRow({ transaction, categoryOptions: options, live, saveCategory, saveSplit }: { transaction: WorkspaceTransaction; categoryOptions: ReturnType<typeof categoryOptions>; live: boolean; saveCategory: (id: string, categoryId: string) => Promise<void>; saveSplit: (id: string, shared: boolean) => Promise<void> }) {
+function TransactionRow({ transaction, categoryOptions: options, live, saveCategory, saveSplit, saveLabel }: { transaction: WorkspaceTransaction; categoryOptions: ReturnType<typeof categoryOptions>; live: boolean; saveCategory: (id: string, categoryId: string) => Promise<void>; saveSplit: (id: string, shared: boolean) => Promise<void>; saveLabel: (id: string, label: string) => Promise<void> }) {
   const duplicate = transaction.metadata?.isDuplicate === true;
   const crossedOut = Number(transaction.amount) === 0 || ["failed", "reversed"].includes(transaction.status);
   const reportingAmount = duplicate || crossedOut ? null : transaction.currency === "USD" ? Number(transaction.amount) : transaction.reporting_value ? Number(transaction.reporting_value.reporting_amount) : null;
@@ -90,7 +97,16 @@ function TransactionRow({ transaction, categoryOptions: options, live, saveCateg
   return <tr className={crossedOut ? "align-top bg-[#faf7f3] opacity-60" : "align-top"}>
     <td className="whitespace-nowrap px-4 py-3"><strong className={"block font-medium" + crossedClass}>{date(transaction.occurred_at)}</strong><span className="mt-1 block font-mono text-[10px] text-[var(--muted)]">{transaction.id.slice(0, 12)}</span></td>
     <td className="max-w-[260px] px-4 py-3">
-      <p className={"truncate font-medium" + crossedClass} title={transaction.description}>{transaction.merchant_name || transaction.description}</p>
+      <p className={"font-medium leading-5" + crossedClass} title={transaction.description}>{transaction.description}</p>
+      <input
+        aria-label={"Label for " + transaction.description}
+        disabled={!live}
+        defaultValue={transaction.transaction_label ?? ""}
+        placeholder="Add a label below the original name"
+        onBlur={(event) => { if (event.currentTarget.value.trim() !== (transaction.transaction_label ?? "")) void saveLabel(transaction.id, event.currentTarget.value); }}
+        onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); if (event.key === "Escape") { event.currentTarget.value = transaction.transaction_label ?? ""; event.currentTarget.blur(); } }}
+        className="mt-1 h-7 w-full rounded-md border border-dashed border-[var(--line)] bg-transparent px-2 text-xs font-medium text-[var(--forest)] placeholder:font-normal placeholder:text-[var(--muted)] disabled:border-transparent"
+      />
       <p className="mt-1 truncate text-xs text-[var(--muted)]">{transaction.account?.name ?? "Unknown account"} · {transaction.kind.replaceAll("_", " ")}</p>
       {crossedOut ? <span className="mt-1 inline-block rounded-full bg-[#f7e3df] px-2 py-0.5 text-[10px] font-semibold text-[var(--danger)]">{transaction.status === "failed" ? "Rejected" : transaction.status === "reversed" ? "Reversed" : "Zero amount"}</span> : null}
       {duplicate ? <span className="mt-1 ml-1 inline-block rounded-full bg-[var(--paper-deep)] px-2 py-0.5 text-[10px]">Duplicate copy</span> : null}

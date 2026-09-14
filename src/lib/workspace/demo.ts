@@ -29,6 +29,7 @@ export interface WorkspaceTransaction {
   occurred_at: string;
   posted_at?: string | null;
   description: string;
+  transaction_label?: string | null;
   amount: string;
   currency: string;
   original_amount?: string | null;

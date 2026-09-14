@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 
 const correctionSchema = z.object({
   description: z.string().trim().min(1).max(240).optional(),
+  transactionLabel: z.string().trim().max(160).nullable().optional(),
   kind: z.enum(["income", "expense", "transfer", "fee", "tax", "refund", "cash_withdrawal", "investment_purchase", "investment_sale", "investment_income", "unknown"]).optional(),
   categoryId: z.string().uuid().nullable().optional(),
   applyToSimilar: z.boolean().default(true),
@@ -47,6 +48,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
   }
   const update: Record<string, unknown> = {};
   if (input.data.description) update.description = input.data.description;
+  if (input.data.transactionLabel !== undefined) update.transaction_label = input.data.transactionLabel || null;
   if (input.data.kind) update.kind = input.data.kind;
   if (input.data.categoryId !== undefined) update.category_id = input.data.categoryId;
   if (input.data.excludedFromTotals !== undefined) update.excluded_from_totals = input.data.excludedFromTotals;
@@ -61,7 +63,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
   if (input.data.travelOrigin !== undefined) update.travel_origin = input.data.travelOrigin;
   if (input.data.travelDestination !== undefined) update.travel_destination = input.data.travelDestination;
   if (input.data.travelDate !== undefined) update.travel_date = input.data.travelDate;
-  const hasTransactionSpecificFields = [input.data.accountOwnerId, input.data.paidById, input.data.beneficiaryScope, input.data.reimbursementStatus, input.data.merchantName, input.data.merchantCountry, input.data.merchantCity, input.data.locationPeriodId, input.data.travelOrigin, input.data.travelDestination, input.data.travelDate].some((value) => value !== undefined);
+  const hasTransactionSpecificFields = [input.data.transactionLabel, input.data.accountOwnerId, input.data.paidById, input.data.beneficiaryScope, input.data.reimbursementStatus, input.data.merchantName, input.data.merchantCountry, input.data.merchantCity, input.data.locationPeriodId, input.data.travelOrigin, input.data.travelDestination, input.data.travelDate].some((value) => value !== undefined);
   const shouldApplyCategoryRule = input.data.categoryId !== undefined && input.data.applyToSimilar && !input.data.description && !input.data.kind && input.data.excludedFromTotals === undefined && !hasTransactionSpecificFields;
   let query = supabase.from("transactions").update(update).eq("user_id", user.id);
   query = shouldApplyCategoryRule ? query.eq("description", current.description) : query.eq("id", id);
@@ -86,7 +88,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     }
   }
 
-  const { data, error: reloadError } = await supabase.from("transactions").select("id,description,kind,category_id,excluded_from_totals").eq("id", id).eq("user_id", user.id).single();
+  const { data, error: reloadError } = await supabase.from("transactions").select("id,description,transaction_label,kind,category_id,excluded_from_totals").eq("id", id).eq("user_id", user.id).single();
   if (reloadError) return Response.json({ error: reloadError.message }, { status: 422 });
   return Response.json({ transaction: data, appliedToSimilar: shouldApplyCategoryRule });
 }

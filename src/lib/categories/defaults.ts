@@ -49,6 +49,8 @@ export const defaultExpenseCategories: DefaultExpenseCategory[] = [
   { name: "Diving & activities", parentName: "Travel", lifeArea: "Travel", essential: false, color: "#167b91", pattern: /diving|buceo|scuba|surfboard|water activit/i },
   { name: "Workshops & classes", parentName: "Education", lifeArea: "Growth", essential: false, color: "#9a6b52", pattern: /workshop|taller|class|clase/i },
   { name: "Work tests", lifeArea: "Work", essential: false, color: "#6f7782", pattern: /shopify work test|sweet[ -]?chemistry/i },
+  { name: "Papaya Kids", lifeArea: "Business", essential: false, color: "#b06d32", pattern: /papaya kids|jazak\s+veematz|longxiang\s+knitting/i },
+  { name: "Loan on card · cash returned", lifeArea: "Financial", essential: false, extraordinary: true, color: "#8b7656", pattern: /loan on card|returned in cash|cash loan recovered/i },
   { name: "Satu Lagi Villa", lifeArea: "Assets", essential: false, extraordinary: true, color: "#8a6545", pattern: /satu lagi villa/i },
   { name: "Gifts & giving", lifeArea: "Relationships", essential: false, color: "#a66b6b", pattern: /gift|regalo|donation|donaci[oó]n|charity/i },
 ];
