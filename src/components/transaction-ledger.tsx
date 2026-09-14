@@ -13,6 +13,7 @@ export function TransactionLedger({ workspace, mutate, selection, clearSelection
   const [month, setMonth] = useState("all");
   const [status, setStatus] = useState("posted");
   const [scope, setScope] = useState("all");
+  const [savingScopeId, setSavingScopeId] = useState<string | null>(null);
   const selectedIds = useMemo(() => selection ? new Set(selection.transactionIds) : null, [selection]);
   const months = useMemo(() => [...new Set(workspace.transactions.map((transaction) => transaction.occurred_at.slice(0, 7)))].sort().reverse(), [workspace.transactions]);
   const expenseCategoryOptions = useMemo(() => categoryOptions(workspace.categories, "expense"), [workspace.categories]);
@@ -35,14 +36,14 @@ export function TransactionLedger({ workspace, mutate, selection, clearSelection
       window.alert(messageOf(error));
     }
   };
-  const saveSplit = async (transactionId: string, shared: boolean) => {
-    const splits = shared
-      ? [{ kind: "personal", label: "My share", percentage: 0.5 }, { kind: "household_member", label: "Household share", percentage: 0.5 }]
-      : [{ kind: "personal", label: "Personal", percentage: 1 }];
+  const saveScope = async (transactionId: string, beneficiaryScope: "personal" | "shared") => {
+    setSavingScopeId(transactionId);
     try {
-      await mutate("/api/transactions/" + transactionId + "/splits", "PUT", { splits });
+      await mutate("/api/transactions/" + transactionId, "PATCH", { beneficiaryScope, applyToSimilar: false });
     } catch (error) {
       window.alert(messageOf(error));
+    } finally {
+      setSavingScopeId(null);
     }
   };
   const saveLabel = async (transactionId: string, transactionLabel: string) => {
@@ -77,7 +78,7 @@ export function TransactionLedger({ workspace, mutate, selection, clearSelection
       <table className="w-full min-w-[1280px] text-left text-sm">
         <thead className="bg-[var(--paper)] text-[11px] uppercase tracking-[0.08em] text-[var(--muted)]"><tr><th className="px-4 py-3">Payment date</th><th className="px-4 py-3">Merchant or description</th><th className="px-4 py-3">Category</th><th className="px-4 py-3">Location</th><th className="px-4 py-3">Original amount</th><th className="px-4 py-3">USD reporting value</th><th className="px-4 py-3">Service month</th><th className="px-4 py-3">Personal/shared</th></tr></thead>
         <tbody className="divide-y divide-[var(--line)]">
-          {rows.map((transaction) => <TransactionRow key={transaction.id} transaction={transaction} categoryOptions={expenseCategoryOptions} live={live} saveCategory={saveCategory} saveSplit={saveSplit} saveLabel={saveLabel} />)}
+          {rows.map((transaction) => <TransactionRow key={transaction.id} transaction={transaction} categoryOptions={expenseCategoryOptions} live={live} savingScope={savingScopeId === transaction.id} saveCategory={saveCategory} saveScope={saveScope} saveLabel={saveLabel} />)}
           {!rows.length ? <tr><td colSpan={8} className="p-8 text-center text-sm text-[var(--muted)]">No transactions match this evidence filter.</td></tr> : null}
         </tbody>
       </table>
@@ -85,7 +86,7 @@ export function TransactionLedger({ workspace, mutate, selection, clearSelection
   </section>;
 }
 
-function TransactionRow({ transaction, categoryOptions: options, live, saveCategory, saveSplit, saveLabel }: { transaction: WorkspaceTransaction; categoryOptions: ReturnType<typeof categoryOptions>; live: boolean; saveCategory: (id: string, categoryId: string) => Promise<void>; saveSplit: (id: string, shared: boolean) => Promise<void>; saveLabel: (id: string, label: string) => Promise<void> }) {
+function TransactionRow({ transaction, categoryOptions: options, live, savingScope, saveCategory, saveScope, saveLabel }: { transaction: WorkspaceTransaction; categoryOptions: ReturnType<typeof categoryOptions>; live: boolean; savingScope: boolean; saveCategory: (id: string, categoryId: string) => Promise<void>; saveScope: (id: string, scope: "personal" | "shared") => Promise<void>; saveLabel: (id: string, label: string) => Promise<void> }) {
   const duplicate = transaction.metadata?.isDuplicate === true;
   const crossedOut = Number(transaction.amount) === 0 || ["failed", "reversed"].includes(transaction.status);
   const reportingAmount = duplicate || crossedOut ? null : transaction.currency === "USD" ? Number(transaction.amount) : transaction.reporting_value ? Number(transaction.reporting_value.reporting_amount) : null;
@@ -117,7 +118,7 @@ function TransactionRow({ transaction, categoryOptions: options, live, saveCateg
     <td className={"whitespace-nowrap px-4 py-3 font-mono text-xs" + crossedClass}>{money(originalAmount.amount, originalAmount.currency)}</td>
     <td className="px-4 py-3"><span className={"block whitespace-nowrap font-mono text-xs" + crossedClass}>{reportingAmount == null ? "Not included" : money(reportingAmount, "USD")}</span><span className="mt-1 block max-w-48 text-[10px] leading-4 text-[var(--muted)]">{source}{transaction.reporting_value ? " · rate " + transaction.reporting_value.rate_to_reporting : ""}</span></td>
     <td className="px-4 py-3">{allocations.length ? allocations.map((allocation) => <span key={allocation.id} className="mb-1 block whitespace-nowrap text-xs">{allocation.service_month.slice(0, 7)} · {money(allocation.amount, allocation.currency)}{allocation.is_estimated ? " est." : ""}</span>) : <span className="text-xs text-[var(--muted)]">Same as payment month</span>}</td>
-    <td className="px-4 py-3"><p className="mb-2 text-[10px] font-semibold text-[var(--muted)]">Paid by {transaction.paid_by?.display_name ?? transaction.account_owner?.display_name ?? "Luciana"}</p><div className="flex gap-1"><button disabled={!live} onClick={() => void saveSplit(transaction.id, false)} className={`rounded-lg border px-2 py-1 text-[10px] font-semibold disabled:opacity-45 ${(transaction.beneficiary_scope ?? "personal") === "personal" ? "border-[var(--forest)] bg-[var(--forest-soft)] text-[var(--forest)]" : "border-[var(--line)]"}`}>Personal</button><button disabled={!live} onClick={() => void saveSplit(transaction.id, true)} className={`rounded-lg border px-2 py-1 text-[10px] font-semibold disabled:opacity-45 ${transaction.beneficiary_scope === "shared" ? "border-[var(--amber)] bg-[var(--amber-soft)] text-[var(--amber)]" : "border-[var(--line)]"}`}>Shared household</button></div>{typeof transaction.metadata?.attributionNote === "string" ? <p className="mt-2 max-w-52 text-[10px] leading-4 text-[var(--muted)]">{transaction.metadata.attributionNote}</p> : null}</td>
+    <td className="px-4 py-3"><p className="mb-2 text-[10px] font-semibold text-[var(--muted)]">Paid by {transaction.paid_by?.display_name ?? transaction.account_owner?.display_name ?? "Luciana"}</p><div className="flex gap-1"><button type="button" disabled={!live || savingScope} onClick={() => void saveScope(transaction.id, "personal")} className={`rounded-lg border px-2 py-1 text-[10px] font-semibold disabled:opacity-45 ${(transaction.beneficiary_scope ?? "personal") === "personal" ? "border-[var(--forest)] bg-[var(--forest-soft)] text-[var(--forest)]" : "border-[var(--line)]"}`}>Personal</button><button type="button" disabled={!live || savingScope} onClick={() => void saveScope(transaction.id, "shared")} className={`rounded-lg border px-2 py-1 text-[10px] font-semibold disabled:opacity-45 ${transaction.beneficiary_scope === "shared" ? "border-[var(--amber)] bg-[var(--amber-soft)] text-[var(--amber)]" : "border-[var(--line)]"}`}>Shared household</button></div>{savingScope ? <p role="status" className="mt-1 text-[10px] font-semibold text-[var(--forest)]">Saving…</p> : null}{transaction.metadata?.beneficiaryScopeSource === "manual" ? <p className="mt-1 text-[10px] text-[var(--muted)]">Manual choice</p> : null}{typeof transaction.metadata?.attributionNote === "string" ? <p className="mt-2 max-w-52 text-[10px] leading-4 text-[var(--muted)]">{transaction.metadata.attributionNote}</p> : null}</td>
   </tr>;
 }
 

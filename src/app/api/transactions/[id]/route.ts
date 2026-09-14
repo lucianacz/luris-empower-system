@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { canonicalMerchant } from "@/lib/reporting/report";
+import { withManualBeneficiaryScope } from "@/lib/spending/beneficiary-scope";
 import { hasSupabaseEnv } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
 
@@ -31,7 +32,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return Response.json({ error: "Sign in first." }, { status: 401 });
-  const { data: current, error: currentError } = await supabase.from("transactions").select("description,merchant_name,merchant_key").eq("id", id).eq("user_id", user.id).single();
+  const { data: current, error: currentError } = await supabase.from("transactions").select("description,merchant_name,merchant_key,metadata").eq("id", id).eq("user_id", user.id).single();
   if (currentError) return Response.json({ error: currentError.message }, { status: 404 });
   if (input.data.categoryId) {
     const { data: category, error: categoryError } = await supabase.from("categories").select("id").eq("id", input.data.categoryId).eq("user_id", user.id).maybeSingle();
@@ -55,7 +56,10 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
   if (input.data.excludedFromTotals !== undefined) update.excluded_from_totals = input.data.excludedFromTotals;
   if (input.data.accountOwnerId !== undefined) update.account_owner_id = input.data.accountOwnerId;
   if (input.data.paidById !== undefined) update.paid_by_id = input.data.paidById;
-  if (input.data.beneficiaryScope) update.beneficiary_scope = input.data.beneficiaryScope;
+  if (input.data.beneficiaryScope) {
+    update.beneficiary_scope = input.data.beneficiaryScope;
+    update.metadata = withManualBeneficiaryScope(current.metadata as Record<string, unknown> | null, input.data.beneficiaryScope);
+  }
   if (input.data.reimbursementStatus) update.reimbursement_status = input.data.reimbursementStatus;
   if (input.data.merchantName !== undefined) update.merchant_name = input.data.merchantName;
   if (input.data.merchantCountry !== undefined) update.merchant_country = input.data.merchantCountry;
@@ -109,7 +113,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     }
   }
 
-  const { data, error: reloadError } = await supabase.from("transactions").select("id,description,transaction_label,kind,category_id,excluded_from_totals").eq("id", id).eq("user_id", user.id).single();
+  const { data, error: reloadError } = await supabase.from("transactions").select("id,description,transaction_label,kind,category_id,excluded_from_totals,beneficiary_scope,metadata").eq("id", id).eq("user_id", user.id).single();
   if (reloadError) return Response.json({ error: reloadError.message }, { status: 422 });
   return Response.json({ transaction: data, appliedToSimilar: shouldApplyCategoryRule || labelAppliedToSimilar, message: labelAppliedToSimilar ? "Label saved for this merchant or person across history and future imports." : "Transaction saved." });
 }

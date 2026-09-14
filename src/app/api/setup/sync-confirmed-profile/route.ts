@@ -8,7 +8,7 @@ import { createClient } from "@/lib/supabase/server";
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
-const profileVersion = "confirmed-profile-2026-09-13-v7";
+const profileVersion = "confirmed-profile-2026-09-14-v8";
 const periods = [
   { name: "Mexico", countryCode: "MX", countryName: "Mexico", currency: "MXN", startsOn: "2026-01-10", endsOn: "2026-03-06", periodType: "temporary_stay", tripPurpose: null },
   { name: "Miami", countryCode: "US", countryName: "United States", currency: "USD", startsOn: "2026-03-07", endsOn: "2026-03-21", periodType: "temporary_stay", tripPurpose: null },
@@ -35,6 +35,24 @@ export async function POST() {
   if (ownershipError) return Response.json({ error: ownershipError.message }, { status: 422 });
   const { error: accountOwnershipError } = await supabase.from("financial_accounts").update({ owner_person_id: luciana.id }).eq("user_id", user.id).is("owner_person_id", null);
   if (accountOwnershipError) return Response.json({ error: accountOwnershipError.message }, { status: 422 });
+
+  const { data: brazil, error: brazilError } = await supabase.from("locations").upsert({ user_id: user.id, name: "Brazil", country_code: "BR", country_name: "Brazil", default_currency: "BRL" }, { onConflict: "user_id,country_code,name" }).select("id").single();
+  if (brazilError) return Response.json({ error: brazilError.message }, { status: 422 });
+  const { data: incorrectBrazilPeriods, error: brazilPeriodsError } = await supabase.from("location_periods").select("id").eq("user_id", user.id).eq("person_id", luciana.id).eq("location_id", brazil.id).neq("status", "rejected");
+  if (brazilPeriodsError) return Response.json({ error: brazilPeriodsError.message }, { status: 422 });
+  const incorrectBrazilPeriodIds = (incorrectBrazilPeriods ?? []).map((period) => period.id);
+  if (incorrectBrazilPeriodIds.length) {
+    const { error: unlinkBrazilError } = await supabase.from("transactions").update({ location_period_id: null }).eq("user_id", user.id).in("location_period_id", incorrectBrazilPeriodIds);
+    if (unlinkBrazilError) return Response.json({ error: unlinkBrazilError.message }, { status: 422 });
+    const { error: rejectBrazilError } = await supabase.from("location_periods").update({ status: "rejected", explanation: "Luciana confirmed she did not travel to Brazil in 2025 or 2026." }).eq("user_id", user.id).in("id", incorrectBrazilPeriodIds);
+    if (rejectBrazilError) return Response.json({ error: rejectBrazilError.message }, { status: 422 });
+  }
+  const { data: brazilRejection, error: brazilRejectionLookupError } = await supabase.from("location_periods").select("id").eq("user_id", user.id).eq("person_id", luciana.id).eq("location_id", brazil.id).eq("starts_on", "2025-01-01").eq("ends_on", "2026-12-31").eq("status", "rejected").limit(1).maybeSingle();
+  if (brazilRejectionLookupError) return Response.json({ error: brazilRejectionLookupError.message }, { status: 422 });
+  if (!brazilRejection) {
+    const { error: saveBrazilRejectionError } = await supabase.from("location_periods").insert({ user_id: user.id, person_id: luciana.id, location_id: brazil.id, starts_on: "2025-01-01", ends_on: "2026-12-31", status: "rejected", period_type: "stay", trip_purpose: null, confidence: 1, explanation: "Luciana confirmed she did not travel to Brazil in 2025 or 2026. Brazilian-currency or merchant signals are not evidence of her physical location.", evidence: { source: "user_confirmation", confirmedOn: "2026-09-14" } });
+    if (saveBrazilRejectionError) return Response.json({ error: saveBrazilRejectionError.message }, { status: 422 });
+  }
 
   const { data: existingPeriods, error: periodLookupError } = await supabase.from("location_periods").select("id,starts_on,ends_on,status").eq("user_id", user.id).eq("person_id", luciana.id).neq("status", "rejected").lte("starts_on", "2026-12-31").or("ends_on.is.null,ends_on.gte.2026-01-10");
   if (periodLookupError) return Response.json({ error: periodLookupError.message }, { status: 422 });
@@ -64,7 +82,7 @@ export async function POST() {
   const cash = await syncConfirmedCashExpenses(supabase, user.id);
   const intelligence = await rebuildSpendingIntelligence(supabase, user.id);
   const property = await syncSatuLagiProject(supabase, user.id);
-  const { error: saveMarkerError } = await supabase.from("insights").upsert({ user_id: user.id, insight_key: profileVersion, insight_type: "system", title: "Confirmed profile data synchronized", body: "Ownership, confirmed locations, approximate USD values, cash rent, Satu Lagi dates, and the latest merchant and household rules have been applied.", priority: 0, transaction_ids: [], metadata: { hidden: true } }, { onConflict: "user_id,insight_key" });
+  const { error: saveMarkerError } = await supabase.from("insights").upsert({ user_id: user.id, insight_key: profileVersion, insight_type: "system", title: "Confirmed profile data synchronized", body: "Ownership, confirmed locations, Costa Rica household food, editable scope rules, approximate USD values, cash rent, Satu Lagi dates, and merchant rules have been applied.", priority: 0, transaction_ids: [], metadata: { hidden: true } }, { onConflict: "user_id,insight_key" });
   if (saveMarkerError) return Response.json({ error: saveMarkerError.message }, { status: 422 });
   return Response.json({ changed: true, message: "Approximate USD values, cash rent, Satu Lagi, merchant rules, ownership, and confirmed trips were synchronized.", intelligence, property, trips, cash });
 }

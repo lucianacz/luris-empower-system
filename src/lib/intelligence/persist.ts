@@ -9,6 +9,7 @@ import { uniqueByFingerprint } from "@/lib/import/runtime-duplicates";
 import { backfillEstimatedReportingValues } from "@/lib/exchange-rates/backfill";
 import { analyzeRecurring } from "./recurring";
 import { currentFinanceDate } from "@/lib/dates/current-date";
+import { hasManualBeneficiaryScope, isCostaRicaHouseholdFood } from "@/lib/spending/beneficiary-scope";
 
 export async function rebuildSpendingIntelligence(supabase: SupabaseClient, userId: string) {
   const categoryIds = await ensureDefaultCategories(supabase, userId);
@@ -20,6 +21,7 @@ export async function rebuildSpendingIntelligence(supabase: SupabaseClient, user
   await applyHospitalAlemanRule(supabase, userId, transactions, categoryIds.get("Health insurance") ?? null);
   await applyConfirmedFundingAttributions(supabase, userId, transactions);
   await applyHouseholdRules(supabase, userId, transactions);
+  await restoreManualBeneficiaryScopes(supabase, userId, transactions);
   const automaticallyDismissedQuestions = await dismissUnnecessaryQuestions(supabase, userId, transactions);
   const estimatedReportingValueCount = await backfillEstimatedReportingValues(supabase, userId);
   const analysis = analyzeRecurring(uniqueByFingerprint(transactions), currentFinanceDate());
@@ -359,6 +361,7 @@ async function applyHouseholdRules(supabase: SupabaseClient, userId: string, tra
 
   for (const transaction of transactions) {
     if (transaction.status !== "posted" || transaction.excluded_from_totals || !["expense", "refund"].includes(transaction.kind)) continue;
+    if (hasManualBeneficiaryScope(transaction.metadata)) continue;
     const categoryName = transaction.category?.name ?? null;
     const country = transaction.location_period?.location.country_code ?? transaction.merchant_country ?? null;
     const originalCurrency = transaction.original_currency?.toUpperCase() ?? transaction.currency.toUpperCase();
@@ -370,13 +373,13 @@ async function applyHouseholdRules(supabase: SupabaseClient, userId: string, tra
     const isMexico = (country === "MX" || originalCurrency === "MXN") && ["Dining out", "Groceries", "Housing", "Hotels"].includes(categoryName ?? "");
     const isUsHotel = country === "US" && categoryName === "Hotels";
     const locationName = transaction.location_period?.location.name?.toLocaleLowerCase() ?? "";
-    const isCostaRicaRestaurant = country === "CR" && categoryName === "Dining out";
+    const isCostaRicaFood = isCostaRicaHouseholdFood({ categoryName, locationCountry: country, merchantCountry: transaction.merchant_country ?? null, originalCurrency });
     const isMiamiRestaurant = transaction.account_owner?.role === "self" && locationName.includes("miami") && categoryName === "Dining out";
     const isSharedAsiaExpense = sharedAsiaCategories.has(categoryName ?? "") && (asiaCountryCodes.has(country ?? "") || asiaCurrencies.has(transaction.original_currency?.toUpperCase() ?? transaction.currency.toUpperCase()));
     const isYouTube = /youtube\s*\(via apple\)|apple\.com(?:\/|\s+)bill/i.test(`${transaction.merchant_name ?? ""} ${transaction.description}`) && Math.abs(Number(transaction.amount)) === 9.49;
 
     if (isSoloTrip) personalSoloTripIds.push(transaction.id);
-    else if (isTravelOrCar || isMexico || isUsHotel || isCostaRicaRestaurant || isMiamiRestaurant || isSharedAsiaExpense || isYouTube) sharedIds.push(transaction.id);
+    else if (isTravelOrCar || isMexico || isUsHotel || isCostaRicaFood || isMiamiRestaurant || isSharedAsiaExpense || isYouTube) sharedIds.push(transaction.id);
   }
 
   for (let index = 0; index < sharedIds.length; index += 500) {
@@ -394,6 +397,18 @@ async function applyHouseholdRules(supabase: SupabaseClient, userId: string, tra
   for (const transaction of transactions) {
     if (sharedSet.has(transaction.id)) transaction.beneficiary_scope = "shared";
     if (personalSet.has(transaction.id)) transaction.beneficiary_scope = "personal";
+  }
+}
+
+async function restoreManualBeneficiaryScopes(supabase: SupabaseClient, userId: string, transactions: WorkspaceTransaction[]) {
+  for (const scope of ["personal", "shared", "partner", "other"] as const) {
+    const ids = transactions.filter((transaction) => hasManualBeneficiaryScope(transaction.metadata) && transaction.metadata?.beneficiaryScope === scope).map((transaction) => transaction.id);
+    const idSet = new Set(ids);
+    for (let index = 0; index < ids.length; index += 500) {
+      const { error } = await supabase.from("transactions").update({ beneficiary_scope: scope }).eq("user_id", userId).in("id", ids.slice(index, index + 500));
+      if (error) throw error;
+    }
+    for (const transaction of transactions) if (idSet.has(transaction.id)) transaction.beneficiary_scope = scope;
   }
 }
 

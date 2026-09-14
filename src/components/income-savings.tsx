@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowDownRight, CalendarDays, CircleDollarSign, PiggyBank, TrendingUp } from "lucide-react";
+import { ArrowDownRight, CalendarDays, CircleDollarSign, PiggyBank } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { OpenTransactions } from "@/components/finance-ui-types";
 import { buildSpendingReport } from "@/lib/reporting/report";
@@ -21,7 +21,6 @@ export function IncomeSavings({ workspace, openTransactions, combinedHousehold =
   const estimatedSavings = totalIncome - spending.total.amount;
   const savingsRate = totalIncome > 0 ? estimatedSavings / totalIncome : 0;
   const completedMonths = monthsBetween(range.from, range.to).filter((month) => month < today.slice(0, 7));
-  const investmentContributions = workspace.investmentTransactions.filter((transaction) => transaction.transaction_type === "deposit" && inRange(transaction.occurred_at, range) && transaction.currency === "USD").reduce((sum, transaction) => sum + Number(transaction.gross_amount), 0);
   const payers = groupIncome(rows);
 
   const selectPreset = (value: Exclude<DatePreset, "custom" | "custom_month">) => { setPreset(value); setRange(rangeForPreset(value, today, firstRecordDate)); };
@@ -39,10 +38,7 @@ export function IncomeSavings({ workspace, openTransactions, combinedHousehold =
 
     {missingFx.length ? <button onClick={() => openTransactions({ title: "Income missing USD conversion", transactionIds: missingFx.map((row) => row.id), range })} className="w-full rounded-xl border border-[#e3bf9f] bg-[#fbefe4] px-4 py-3 text-left text-sm text-[#74411f]"><strong>{missingFx.length} income transactions are not included yet</strong> because no historical USD conversion is available.</button> : null}
 
-    <div className="grid gap-5 xl:grid-cols-[1fr_0.8fr]">
-      <article className="rounded-[22px] border border-[var(--line)] bg-[var(--surface)] p-5"><h2 className="font-semibold">Who paid you</h2><p className="mt-1 text-sm text-[var(--muted)]">Every payer opens the exact source transactions.</p><div className="mt-4 space-y-2">{payers.map((payer) => <button key={payer.key} onClick={() => openTransactions({ title: `Income · ${payer.name}`, transactionIds: payer.transactionIds, range })} className="flex w-full items-center justify-between gap-4 rounded-xl bg-[var(--paper)] p-3 text-left"><span><strong className="block text-sm">{payer.name}</strong><span className="text-xs text-[var(--muted)]">{payer.transactionIds.length} payment{payer.transactionIds.length === 1 ? "" : "s"}</span></span><strong className="font-mono text-sm">{money(payer.amount)}</strong></button>)}{!payers.length ? <p className="rounded-xl bg-[var(--paper)] p-4 text-sm text-[var(--muted)]">No income is recorded in this period.</p> : null}</div></article>
-      <article className="rounded-[22px] border border-[var(--line)] bg-[var(--surface)] p-5"><span className="grid size-10 place-items-center rounded-xl bg-[var(--forest-soft)] text-[var(--forest)]"><TrendingUp aria-hidden="true" className="size-5" /></span><h2 className="mt-4 font-semibold">Where the surplus went</h2><p className="mt-2 text-sm leading-6 text-[var(--muted)]">Approximate savings are income minus genuine spending. Moving money between Deel, ARQ, Brubank, cash, or investments does not reduce savings; only fees do.</p><div className="mt-4 rounded-xl bg-[var(--paper)] p-4"><span className="text-xs text-[var(--muted)]">Known investment contributions in this period</span><strong className="mt-1 block text-xl">{money(investmentContributions)}</strong><span className="mt-1 block text-[10px] text-[var(--muted)]">Shown as allocation of savings, not counted again as spending.</span></div><p className="mt-3 text-xs leading-5 text-[var(--muted)]">Satu Lagi land and legal payments stay traceable as capital costs but are excluded from monthly living spending.</p></article>
-    </div>
+    <article className="rounded-[22px] border border-[var(--line)] bg-[var(--surface)] p-5"><h2 className="font-semibold">Who paid you</h2><p className="mt-1 text-sm text-[var(--muted)]">Every payer opens the exact source transactions.</p><div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">{payers.map((payer) => <button key={payer.key} onClick={() => openTransactions({ title: `Income · ${payer.name}`, transactionIds: payer.transactionIds, range })} className="flex w-full items-center justify-between gap-4 rounded-xl bg-[var(--paper)] p-3 text-left"><span><strong className="block text-sm">{payer.name}</strong><span className="text-xs text-[var(--muted)]">{payer.transactionIds.length} payment{payer.transactionIds.length === 1 ? "" : "s"}</span></span><strong className="font-mono text-sm">{money(payer.amount)}</strong></button>)}{!payers.length ? <p className="rounded-xl bg-[var(--paper)] p-4 text-sm text-[var(--muted)]">No income is recorded in this period.</p> : null}</div></article>
   </section>;
 }
 
