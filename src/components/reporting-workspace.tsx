@@ -14,7 +14,6 @@ import type { WorkspaceData, WorkspaceTransaction } from "@/lib/workspace/demo";
 export function ReportingWorkspace({ workspace, moneyView, openTransactions, openLocations }: { workspace: WorkspaceData; moneyView: MoneyView; openTransactions: OpenTransactions; openLocations: () => void }) {
   const today = workspace.asOfDate;
   const availableMonths = useMemo(() => [...new Set(workspace.transactions.map((transaction) => transaction.occurred_at.slice(0, 7)))].sort().reverse(), [workspace.transactions]);
-  const firstRecordDate = useMemo(() => workspace.transactions.reduce((first, transaction) => transaction.occurred_at.slice(0, 10) < first ? transaction.occurred_at.slice(0, 10) : first, today), [today, workspace.transactions]);
   const [preset, setPreset] = useState<DatePreset>("ytd");
   const [range, setRange] = useState<DateRange>(() => rangeForPreset("ytd", today));
   const [customMonth, setCustomMonth] = useState(today.slice(0, 7));
@@ -48,7 +47,7 @@ export function ReportingWorkspace({ workspace, moneyView, openTransactions, ope
     setRange(next);
     setComparisonRange(previousComparableRange(next));
   };
-  const selectPreset = (value: Exclude<DatePreset, "custom" | "custom_month">) => { setPreset(value); updatePrimaryRange(rangeForPreset(value, today, firstRecordDate)); };
+  const selectPreset = (value: Exclude<DatePreset, "custom" | "custom_month">) => { setPreset(value); updatePrimaryRange(rangeForPreset(value, today)); };
   const selectCustomMonth = (month: string) => {
     setCustomMonth(month);
     setPreset("custom_month");

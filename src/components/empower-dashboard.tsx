@@ -34,6 +34,7 @@ import { PropertyProject } from "@/components/property-project";
 import { RecurringExpenses } from "@/components/recurring-expenses";
 import { ReportingWorkspace } from "@/components/reporting-workspace";
 import { TransactionLedger } from "@/components/transaction-ledger";
+import { SYSTEM_START_DATE } from "@/lib/reporting/periods";
 import { createEmptyWorkspace, type WorkspaceData } from "@/lib/workspace/demo";
 
 type View = "spending" | "income" | "property" | "transactions" | "questions" | "locations" | "recurring" | "cash" | "files" | "imports" | "investments" | "transfers" | "settings";
@@ -159,12 +160,13 @@ export function EmpowerDashboard() {
     setSelection(nextSelection);
     navigate("transactions");
   };
-  const visibleWorkspace = useMemo(() => profileWorkspace(workspace, moneyView), [moneyView, workspace]);
+  const systemWorkspace = useMemo(() => ({ ...workspace, transactions: workspace.transactions.filter((transaction) => transaction.occurred_at.slice(0, 10) >= SYSTEM_START_DATE) }), [workspace]);
+  const visibleWorkspace = useMemo(() => profileWorkspace(systemWorkspace, moneyView), [moneyView, systemWorkspace]);
   const transactionWorkspace = useMemo(() => {
     if (!selection) return visibleWorkspace;
     const selectedIds = new Set(selection.transactionIds);
-    return { ...visibleWorkspace, transactions: workspace.transactions.filter((transaction) => selectedIds.has(transaction.id)) };
-  }, [selection, visibleWorkspace, workspace.transactions]);
+    return { ...visibleWorkspace, transactions: systemWorkspace.transactions.filter((transaction) => selectedIds.has(transaction.id)) };
+  }, [selection, systemWorkspace.transactions, visibleWorkspace]);
   const activeOwnerId = moneyView === "luciana"
     ? workspace.people.find((person) => person.role === "self")?.id ?? null
     : moneyView === "julian"
@@ -182,7 +184,7 @@ export function EmpowerDashboard() {
           <span className="grid size-10 place-items-center rounded-[14px] bg-[var(--forest)] text-white shadow-[0_8px_24px_rgba(33,78,69,0.22)]"><Sparkles aria-hidden="true" className="size-5" /></span>
           <div><p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">Luris</p><p className="text-lg font-semibold tracking-[-0.03em]">Empower</p></div>
         </div>
-        <label className="mt-5 block rounded-2xl border border-[var(--line)] bg-[var(--paper)] p-3 text-[11px] font-semibold uppercase tracking-[0.1em] text-[var(--muted)]"><span className="flex items-center gap-2"><Users aria-hidden="true" className="size-4" />Financial profile</span><select aria-label="Financial profile" value={moneyView} onChange={(event) => changeMoneyView(event.target.value as MoneyView)} className="mt-2 h-10 w-full rounded-xl border border-[var(--line)] bg-white px-3 text-sm font-semibold normal-case tracking-normal text-[var(--ink)]"><option value="luciana">Luciana</option><option value="shared">Shared household</option><option value="julian">Julian</option></select><span className="mt-2 block text-[10px] font-normal normal-case leading-4 tracking-normal">{visibleWorkspace.transactions.length} transactions in this profile</span></label>
+        <label className="mt-5 block rounded-2xl border border-[var(--line)] bg-[var(--paper)] p-3 text-[11px] font-semibold uppercase tracking-[0.1em] text-[var(--muted)]"><span className="flex items-center gap-2"><Users aria-hidden="true" className="size-4" />Financial profile</span><select aria-label="Financial profile" value={moneyView} onChange={(event) => changeMoneyView(event.target.value as MoneyView)} className="mt-2 h-10 w-full rounded-xl border border-[var(--line)] bg-white px-3 text-sm font-semibold normal-case tracking-normal text-[var(--ink)]"><option value="luciana">Luciana</option><option value="shared">Shared household</option><option value="julian">Julian</option></select><span className="mt-2 block text-[10px] font-normal normal-case leading-4 tracking-normal">{visibleWorkspace.transactions.length} transactions since Jan 2025</span></label>
         <nav className="mt-5 space-y-1 text-sm" aria-label="Workspace">
           <NavItem icon={LayoutDashboard} label="Spending" active={currentView === "spending"} onSelect={() => navigate("spending")} />
           <NavItem icon={TrendingUp} label="Income & savings" active={currentView === "income"} onSelect={() => navigate("income")} />
@@ -213,7 +215,7 @@ export function EmpowerDashboard() {
         </header>
         {notice ? <div role="status" className="mt-5 flex items-center justify-between gap-3 rounded-xl border border-[var(--line)] bg-[var(--surface)] px-4 py-3 text-sm"><span>{notice}</span><button aria-label="Dismiss message" onClick={() => setNotice("")}><X aria-hidden="true" className="size-4" /></button></div> : null}
         {currentView === "spending" ? <ReportingWorkspace workspace={visibleWorkspace} moneyView={moneyView} openTransactions={openTransactions} openLocations={() => navigate("locations")} /> : null}
-        {currentView === "income" ? <IncomeSavings workspace={moneyView === "shared" ? workspace : visibleWorkspace} combinedHousehold={moneyView === "shared"} openTransactions={openTransactions} /> : null}
+        {currentView === "income" ? <IncomeSavings workspace={moneyView === "shared" ? systemWorkspace : visibleWorkspace} combinedHousehold={moneyView === "shared"} openTransactions={openTransactions} /> : null}
         {currentView === "property" ? <PropertyProject workspace={visibleWorkspace} profile={moneyView} openTransactions={openTransactions} /> : null}
         {currentView === "transactions" ? <><TransactionLedger workspace={transactionWorkspace} mutate={mutate} selection={selection} clearSelection={() => setSelection(null)} /><CategoryCreator disabled={workspace.mode !== "live"} mutate={mutate} /></> : null}
         {currentView === "questions" ? <QuestionsInbox workspace={visibleWorkspace} mutate={mutate} openTransactions={openTransactions} /> : null}
