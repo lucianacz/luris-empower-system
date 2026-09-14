@@ -1,19 +1,24 @@
 "use client";
 
-import { AlertTriangle, ArrowUpRight, CalendarDays, CircleDollarSign, MapPin, ReceiptText, Sparkles } from "lucide-react";
+import { AlertTriangle, ArrowLeftRight, ArrowUpRight, CalendarDays, CircleDollarSign, MapPin, ReceiptText, Sparkles } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { OpenTransactions } from "@/components/finance-ui-types";
-import { buildSpendingReport, type SpendingGroup, type TraceableAmount } from "@/lib/reporting/report";
-import { rangeForPreset, rangeLabel, type DatePreset, type DateRange } from "@/lib/reporting/periods";
+import { compareSpendingCategories, percentageChange, type SpendingCategoryComparison } from "@/lib/reporting/comparison";
+import { buildSpendingReport, type SpendingGroup, type SpendingReport, type TraceableAmount } from "@/lib/reporting/report";
+import { previousComparableRange, rangeForPreset, rangeLabel, type DatePreset, type DateRange } from "@/lib/reporting/periods";
 import type { WorkspaceData, WorkspaceTransaction } from "@/lib/workspace/demo";
 
 export function ReportingWorkspace({ workspace, loading, openTransactions, openQuestions, openLocations }: { workspace: WorkspaceData; loading: boolean; openTransactions: OpenTransactions; openQuestions: () => void; openLocations: () => void }) {
   const today = workspace.asOfDate;
   const [preset, setPreset] = useState<DatePreset>("ytd");
   const [range, setRange] = useState<DateRange>(() => rangeForPreset("ytd", today));
+  const [comparisonEnabled, setComparisonEnabled] = useState(false);
+  const [comparisonRange, setComparisonRange] = useState<DateRange>(() => previousComparableRange(rangeForPreset("ytd", today)));
   const [basis, setBasis] = useState<"cash" | "normalized">("cash");
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const report = useMemo(() => buildSpendingReport(workspace.transactions, range, today), [range, today, workspace.transactions]);
+  const comparisonReport = useMemo(() => buildSpendingReport(workspace.transactions, comparisonRange, today), [comparisonRange, today, workspace.transactions]);
+  const categoryComparison = useMemo(() => compareSpendingCategories(report, comparisonReport), [comparisonReport, report]);
   const categoryTabs = useMemo(() => {
     const tabs = report.categories.slice(0, 14);
     for (const requiredName of ["Friends & social", "Hotels", "Diving & activities"]) {
@@ -30,11 +35,15 @@ export function ReportingWorkspace({ workspace, loading, openTransactions, openQ
   const workTripRows = useMemo(() => workspace.transactions.filter((transaction) => transaction.location_period?.status === "confirmed" && transaction.location_period.trip_purpose?.toLocaleLowerCase().includes("work")), [workspace.transactions]);
   const workTrips = useMemo(() => buildSpendingReport(workTripRows, range, today), [range, today, workTripRows]);
 
-  const selectPreset = (value: Exclude<DatePreset, "custom">) => { setPreset(value); setRange(rangeForPreset(value, today)); };
+  const updatePrimaryRange = (next: DateRange) => {
+    setRange(next);
+    setComparisonRange(previousComparableRange(next));
+  };
+  const selectPreset = (value: Exclude<DatePreset, "custom">) => { setPreset(value); updatePrimaryRange(rangeForPreset(value, today)); };
   const selectMonth = (month: string) => {
     const lastDay = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0)).toISOString().slice(0, 10);
     setPreset("custom");
-    setRange({ from: `${month}-01`, to: earlier(lastDay, today) });
+    updatePrimaryRange({ from: `${month}-01`, to: earlier(lastDay, today) });
     setSelectedCategoryId(null);
   };
   const open = (title: string, amount: TraceableAmount) => openTransactions({ title, transactionIds: amount.transactionIds, range: report.range });
@@ -47,8 +56,9 @@ export function ReportingWorkspace({ workspace, loading, openTransactions, openQ
         </div>
         <div className="flex items-center gap-2 text-xs font-semibold text-[var(--muted)]"><CircleDollarSign aria-hidden="true" className="size-4 text-[var(--forest)]" />Reporting currency: <strong className="text-[var(--ink)]">USD</strong></div>
       </div>
-      {preset === "custom" ? <div className="mt-4 flex flex-wrap gap-3"><DateField label="From" value={range.from} onChange={(from) => setRange((current) => ({ ...current, from }))} /><DateField label="To" value={range.to} max={today} onChange={(to) => setRange((current) => ({ ...current, to }))} /></div> : null}
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[var(--line)] pt-4 text-sm"><p><strong>{rangeLabel(report.range)}</strong><span className="ml-2 text-[var(--muted)]">{report.transactionCount} included transactions</span></p><div className="flex rounded-xl border border-[var(--line)] p-1" aria-label="Reporting basis"><button onClick={() => setBasis("cash")} className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${basis === "cash" ? "bg-[var(--forest-soft)] text-[var(--forest)]" : "text-[var(--muted)]"}`}>Actual cash flow</button><button onClick={() => setBasis("normalized")} className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${basis === "normalized" ? "bg-[var(--forest-soft)] text-[var(--forest)]" : "text-[var(--muted)]"}`}>Monthly normalized cost</button></div></div>
+      {preset === "custom" ? <div className="mt-4 flex flex-wrap gap-3"><DateField label="From" value={range.from} onChange={(from) => updatePrimaryRange({ ...range, from })} /><DateField label="To" value={range.to} max={today} onChange={(to) => updatePrimaryRange({ ...range, to })} /></div> : null}
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[var(--line)] pt-4 text-sm"><p><strong>{rangeLabel(report.range)}</strong><span className="ml-2 text-[var(--muted)]">{report.transactionCount} included transactions</span></p><div className="flex flex-wrap items-center gap-2"><button type="button" onClick={() => setComparisonEnabled((current) => !current)} aria-pressed={comparisonEnabled} className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold ${comparisonEnabled ? "border-[var(--forest)] bg-[var(--forest)] text-white" : "border-[var(--line)] text-[var(--forest)]"}`}><ArrowLeftRight aria-hidden="true" className="size-3.5" />Compare periods</button><div className="flex rounded-xl border border-[var(--line)] p-1" aria-label="Reporting basis"><button onClick={() => setBasis("cash")} className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${basis === "cash" ? "bg-[var(--forest-soft)] text-[var(--forest)]" : "text-[var(--muted)]"}`}>Actual cash flow</button><button onClick={() => setBasis("normalized")} className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${basis === "normalized" ? "bg-[var(--forest-soft)] text-[var(--forest)]" : "text-[var(--muted)]"}`}>Monthly normalized cost</button></div></div></div>
+      {comparisonEnabled ? <div className="mt-4 flex flex-wrap items-center gap-3 rounded-xl bg-[var(--paper)] p-3"><span className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--muted)]">Compare with</span><DateField label="From" value={comparisonRange.from} max={today} onChange={(from) => setComparisonRange((current) => ({ ...current, from }))} /><DateField label="To" value={comparisonRange.to} max={today} onChange={(to) => setComparisonRange((current) => ({ ...current, to }))} /><button type="button" onClick={() => setComparisonRange(previousComparableRange(report.range))} className="rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-xs font-semibold text-[var(--forest)]">Previous equal period</button></div> : null}
     </div>
 
     {workspace.mode !== "live" ? <div className="rounded-xl border border-[#e3bf9f] bg-[#fbefe4] px-4 py-3 text-sm text-[#74411f]"><strong>No financial data loaded.</strong> Sign in to open your private imported transactions.</div> : null}
@@ -60,6 +70,8 @@ export function ReportingWorkspace({ workspace, loading, openTransactions, openQ
       <MetricButton label="Current partial month" value={money(report.currentPartial.amount)} note={`${formatMonth(report.currentPartial.month)} through ${today} · ${report.currentPartial.transactionIds.length} transactions`} icon={ReceiptText} tone="plain" onClick={() => open("Current partial month", report.currentPartial)} />
       <MetricButton label="Data quality" value={`${workspace.dataQuality.score}%`} note={`${workspace.dataQuality.uncategorized + workspace.dataQuality.unansweredQuestions + report.missingFxTransactionIds.length} items need review`} icon={Sparkles} tone="plain" onClick={openQuestions} />
     </div>
+
+    {comparisonEnabled ? <PeriodComparison selected={report} comparison={comparisonReport} rows={categoryComparison} openTransactions={openTransactions} /> : null}
 
     <div className="grid gap-5 xl:grid-cols-[1.15fr_0.85fr]">
       <article className="rounded-[22px] border border-[var(--line)] bg-[var(--surface)] p-5 sm:p-6"><Heading title="Monthly breakdown" subtitle={basis === "cash" ? "Select a month to update this entire page" : "Select a service month to update this entire page"} /><div className="mt-6 flex h-56 items-end gap-2" aria-label="Monthly spending chart">{report.monthly.map((month) => { const amount = basis === "cash" ? month.amount : month.normalizedAmount; return <button key={month.month} onClick={() => selectMonth(month.month)} className="group flex min-w-0 flex-1 flex-col items-center justify-end gap-2" aria-label={`Show ${formatMonth(month.month)} throughout the dashboard`}><span className="hidden text-[10px] font-semibold text-[var(--muted)] sm:block">{compactMoney(amount)}</span><span className={`w-full rounded-t-lg transition group-hover:opacity-75 ${month.isCurrentPartial ? "bg-[var(--amber)]" : "bg-[var(--forest)]"}`} style={{ height: `${Math.max(4, amount / maxMonth * 160)}px` }} /><span className="text-[10px] uppercase text-[var(--muted)]">{month.month.slice(5)}{month.isCurrentPartial ? "*" : ""}</span></button>; })}</div><p className="mt-3 text-xs text-[var(--muted)]">Selecting a bar keeps you here and recalculates totals, categories, merchants, and locations. * Current month is partial.</p></article>
@@ -85,8 +97,24 @@ export function ReportingWorkspace({ workspace, loading, openTransactions, openQ
   </section>;
 }
 
-function DateField({ label, value, max, onChange }: { label: string; value: string; max?: string; onChange: (value: string) => void }) { return <label className="text-xs font-semibold text-[var(--muted)]">{label}<input type="date" value={value} max={max} onChange={(event) => onChange(event.target.value)} className="ml-2 h-10 rounded-xl border border-[var(--line)] bg-white px-3 text-sm text-[var(--ink)]" /></label>; }
+function DateField({ label, value, max, onChange }: { label: string; value: string; max?: string; onChange: (value: string) => void }) { return <label className="text-xs font-semibold text-[var(--muted)]">{label}<input type="date" value={value} max={max} onChange={(event) => { if (event.target.value) onChange(event.target.value); }} className="ml-2 h-10 rounded-xl border border-[var(--line)] bg-white px-3 text-sm text-[var(--ink)]" /></label>; }
 function Heading({ title, subtitle }: { title: string; subtitle: string }) { return <div><h2 className="font-semibold">{title}</h2><p className="mt-1 text-sm text-[var(--muted)]">{subtitle}</p></div>; }
+function PeriodComparison({ selected, comparison, rows, openTransactions }: { selected: SpendingReport; comparison: SpendingReport; rows: SpendingCategoryComparison[]; openTransactions: OpenTransactions }) {
+  const difference = selected.total.amount - comparison.total.amount;
+  const percent = percentageChange(selected.total.amount, comparison.total.amount);
+  const combinedRange = { from: earlier(selected.range.from, comparison.range.from), to: later(selected.range.to, comparison.range.to) };
+  const allTransactionIds = [...new Set([...selected.total.transactionIds, ...comparison.total.transactionIds])];
+  return <article className="overflow-hidden rounded-[22px] border border-[var(--forest)] bg-[var(--surface)]">
+    <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--line)] p-5 sm:p-6"><Heading title="How you use your money · period comparison" subtitle={`Actual cash spending in USD · ${rangeLabel(selected.range)} versus ${rangeLabel(comparison.range)}`} /><span className="rounded-full bg-[var(--forest-soft)] px-3 py-1.5 text-xs font-semibold text-[var(--forest)]">Every number is traceable</span></div>
+    <div className="grid gap-3 p-5 sm:grid-cols-3 sm:p-6">
+      <ComparisonTotal label="Selected period" amount={selected.total.amount} note={`${rangeLabel(selected.range)} · ${selected.total.transactionIds.length} transactions`} onClick={() => openTransactions({ title: "Selected comparison period", transactionIds: selected.total.transactionIds, range: selected.range })} />
+      <ComparisonTotal label="Comparison period" amount={comparison.total.amount} note={`${rangeLabel(comparison.range)} · ${comparison.total.transactionIds.length} transactions`} onClick={() => openTransactions({ title: "Comparison period", transactionIds: comparison.total.transactionIds, range: comparison.range })} />
+      <ComparisonTotal label="Difference" amount={difference} signed note={changeDescription(difference, percent)} tone={difference > 0 ? "more" : difference < 0 ? "less" : "same"} onClick={() => openTransactions({ title: "Transactions behind the period difference", transactionIds: allTransactionIds, range: combinedRange })} />
+    </div>
+    <div className="overflow-x-auto border-t border-[var(--line)]"><table className="w-full min-w-[760px] text-left text-sm"><thead className="bg-[var(--paper)] text-[10px] uppercase tracking-[0.08em] text-[var(--muted)]"><tr><th className="px-4 py-3">Category</th><th className="px-4 py-3 text-right">Selected period</th><th className="px-4 py-3 text-right">Comparison period</th><th className="px-4 py-3 text-right">Difference</th></tr></thead><tbody className="divide-y divide-[var(--line)]">{rows.map((row) => <tr key={row.id}><td className="px-4 py-3"><span className="mr-2 inline-block size-2.5 rounded-full" style={{ backgroundColor: row.color }} /><strong>{row.name}</strong></td><td className="px-4 py-3 text-right"><button onClick={() => openTransactions({ title: `${row.name} · selected period`, transactionIds: row.selectedTransactionIds, range: selected.range })} className="font-mono text-xs underline decoration-[var(--line)] underline-offset-4">{money(row.selectedAmount)}</button></td><td className="px-4 py-3 text-right"><button onClick={() => openTransactions({ title: `${row.name} · comparison period`, transactionIds: row.comparisonTransactionIds, range: comparison.range })} className="font-mono text-xs underline decoration-[var(--line)] underline-offset-4">{money(row.comparisonAmount)}</button></td><td className="px-4 py-3 text-right"><button onClick={() => openTransactions({ title: `${row.name} · period comparison`, transactionIds: [...new Set([...row.selectedTransactionIds, ...row.comparisonTransactionIds])], range: combinedRange })} className={`font-mono text-xs font-semibold underline decoration-[var(--line)] underline-offset-4 ${differenceColor(row.difference)}`}>{signedMoney(row.difference)} <span className="ml-1 font-sans">{percentageLabel(row.percentageChange)}</span></button></td></tr>)}{!rows.length ? <tr><td colSpan={4} className="p-6 text-center text-sm text-[var(--muted)]">No spending exists in either period.</td></tr> : null}</tbody></table></div>
+  </article>;
+}
+function ComparisonTotal({ label, amount, note, onClick, signed = false, tone = "same" }: { label: string; amount: number; note: string; onClick: () => void; signed?: boolean; tone?: "more" | "less" | "same" }) { return <button onClick={onClick} className={`rounded-xl border p-4 text-left ${tone === "more" ? "border-[#e3bf9f] bg-[#fbefe4]" : tone === "less" ? "border-[#b9d4c4] bg-[var(--forest-soft)]" : "border-[var(--line)] bg-[var(--paper)]"}`}><span className="text-xs font-semibold text-[var(--muted)]">{label}</span><strong className={`mt-2 block text-xl ${differenceColor(tone === "more" ? 1 : tone === "less" ? -1 : 0)}`}>{signed ? signedMoney(amount) : money(amount)}</strong><span className="mt-1 block text-[10px] leading-4 text-[var(--muted)]">{note}</span></button>; }
 function CategoryDetail({ category, workspace, range, openTransactions, close }: { category: SpendingGroup; workspace: WorkspaceData; range: DateRange; openTransactions: OpenTransactions; close: () => void }) {
   const rows = workspace.transactions.filter((transaction) => category.transactionIds.includes(transaction.id)).sort((left, right) => right.occurred_at.localeCompare(left.occurred_at));
   const merchants = categoryMerchants(rows);
@@ -143,6 +171,15 @@ function isFullMonth(month: string, from: string, to: string, today: string) { c
 function later(left: string, right: string) { return left > right ? left : right; }
 function earlier(left: string, right: string) { return left < right ? left : right; }
 function money(value: number) { return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(value); }
+function signedMoney(value: number) { return value > 0 ? `+${money(value)}` : money(value); }
+function percentageLabel(value: number | null) { return value == null ? "new" : `${value > 0 ? "+" : ""}${Math.round(value * 100)}%`; }
+function changeDescription(value: number, percent: number | null) {
+  if (value === 0) return "No change between the selected periods.";
+  const direction = value > 0 ? "more" : "less";
+  const percentText = percent == null ? "with no comparable prior spending" : `${Math.abs(Math.round(percent * 100))}% ${direction}`;
+  return `${money(Math.abs(value))} ${direction} · ${percentText}`;
+}
+function differenceColor(value: number) { return value > 0 ? "text-[var(--danger)]" : value < 0 ? "text-[var(--forest)]" : "text-[var(--ink)]"; }
 function compactMoney(value: number) {
   const absolute = Math.abs(value);
   const sign = value < 0 ? "-" : "";

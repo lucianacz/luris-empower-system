@@ -47,6 +47,18 @@ export function rangeLabel(range: DateRange) {
   return `${normalized.from} to ${normalized.to}`;
 }
 
+export function previousComparableRange(range: DateRange): DateRange {
+  const normalized = normalizeRange(range);
+  const from = parseDate(normalized.from);
+  const to = parseDate(normalized.to);
+  const inclusiveDays = Math.round((to.getTime() - from.getTime()) / 86_400_000) + 1;
+  const previousTo = new Date(from);
+  previousTo.setUTCDate(previousTo.getUTCDate() - 1);
+  const previousFrom = new Date(previousTo);
+  previousFrom.setUTCDate(previousFrom.getUTCDate() - inclusiveDays + 1);
+  return { from: isoDate(previousFrom), to: isoDate(previousTo) };
+}
+
 function parseDate(value: string) {
   return new Date(`${value.slice(0, 10)}T00:00:00Z`);
 }
