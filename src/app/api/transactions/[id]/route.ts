@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { canonicalMerchant } from "@/lib/reporting/report";
 import { hasSupabaseEnv } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
 
@@ -30,7 +31,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return Response.json({ error: "Sign in first." }, { status: 401 });
-  const { data: current, error: currentError } = await supabase.from("transactions").select("description").eq("id", id).eq("user_id", user.id).single();
+  const { data: current, error: currentError } = await supabase.from("transactions").select("description,merchant_name,merchant_key").eq("id", id).eq("user_id", user.id).single();
   if (currentError) return Response.json({ error: currentError.message }, { status: 404 });
   if (input.data.categoryId) {
     const { data: category, error: categoryError } = await supabase.from("categories").select("id").eq("id", input.data.categoryId).eq("user_id", user.id).maybeSingle();
@@ -65,10 +66,30 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
   if (input.data.travelDate !== undefined) update.travel_date = input.data.travelDate;
   const hasTransactionSpecificFields = [input.data.transactionLabel, input.data.accountOwnerId, input.data.paidById, input.data.beneficiaryScope, input.data.reimbursementStatus, input.data.merchantName, input.data.merchantCountry, input.data.merchantCity, input.data.locationPeriodId, input.data.travelOrigin, input.data.travelDestination, input.data.travelDate].some((value) => value !== undefined);
   const shouldApplyCategoryRule = input.data.categoryId !== undefined && input.data.applyToSimilar && !input.data.description && !input.data.kind && input.data.excludedFromTotals === undefined && !hasTransactionSpecificFields;
-  let query = supabase.from("transactions").update(update).eq("user_id", user.id);
-  query = shouldApplyCategoryRule ? query.eq("description", current.description) : query.eq("id", id);
-  const { error } = await query;
-  if (error) return Response.json({ error: error.message }, { status: 422 });
+  let labelAppliedToSimilar = false;
+  if (input.data.transactionLabel !== undefined) {
+    const merchantKey = current.merchant_key || canonicalMerchant(current.merchant_name || current.description);
+    const label = input.data.transactionLabel || null;
+    let labelQuery = supabase.from("transactions").update({ transaction_label: label, merchant_key: merchantKey }).eq("user_id", user.id);
+    labelQuery = current.merchant_key ? labelQuery.eq("merchant_key", current.merchant_key) : labelQuery.eq("description", current.description);
+    const { error: labelError } = await labelQuery;
+    if (labelError) return Response.json({ error: labelError.message }, { status: 422 });
+    const { error: merchantError } = await supabase.from("merchant_profiles").upsert({
+      user_id: user.id,
+      merchant_key: merchantKey,
+      display_name: current.merchant_name || current.description,
+      transaction_label: label,
+    }, { onConflict: "user_id,merchant_key" });
+    if (merchantError) return Response.json({ error: merchantError.message }, { status: 422 });
+    delete update.transaction_label;
+    labelAppliedToSimilar = true;
+  }
+  if (Object.keys(update).length) {
+    let query = supabase.from("transactions").update(update).eq("user_id", user.id);
+    query = shouldApplyCategoryRule ? query.eq("description", current.description) : query.eq("id", id);
+    const { error } = await query;
+    if (error) return Response.json({ error: error.message }, { status: 422 });
+  }
 
   if (shouldApplyCategoryRule) {
     const matchText = normalizeMatchText(current.description);
@@ -90,7 +111,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
 
   const { data, error: reloadError } = await supabase.from("transactions").select("id,description,transaction_label,kind,category_id,excluded_from_totals").eq("id", id).eq("user_id", user.id).single();
   if (reloadError) return Response.json({ error: reloadError.message }, { status: 422 });
-  return Response.json({ transaction: data, appliedToSimilar: shouldApplyCategoryRule });
+  return Response.json({ transaction: data, appliedToSimilar: shouldApplyCategoryRule || labelAppliedToSimilar, message: labelAppliedToSimilar ? "Label saved for this merchant or person across history and future imports." : "Transaction saved." });
 }
 
 function normalizeMatchText(value: string) {

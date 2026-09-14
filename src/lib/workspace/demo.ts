@@ -208,6 +208,34 @@ export interface WorkspacePortfolioSnapshot {
 
 export interface WorkspacePerson { id: string; display_name: string; role: "self" | "partner" | "provider" | "other"; notes: string | null }
 
+export interface WorkspacePropertyProject {
+  id: string;
+  name: string;
+  display_name: string;
+  location_name: string | null;
+  currency: string;
+  status: "active" | "completed" | "paused";
+  notes: string | null;
+}
+
+export interface WorkspacePropertyExpense {
+  id: string;
+  project_id: string;
+  transaction_id: string | null;
+  description: string;
+  transaction_label: string | null;
+  expense_type: "land_purchase" | "legal" | "fence" | "construction" | "tax" | "fee" | "other";
+  amount: string;
+  principal_amount: string;
+  fee_amount: string;
+  currency: string;
+  paid_on: string | null;
+  payment_method: "bank_transfer" | "cash" | "card" | "other";
+  source_type: "linked_transaction" | "manual_cash" | "manual_other";
+  notes: string | null;
+  paid_by: { id: string; display_name: string; role: string } | null;
+}
+
 export interface WorkspaceData {
   mode: "demo" | "signed-out" | "live";
   asOfDate: string;
@@ -223,6 +251,8 @@ export interface WorkspaceData {
   investmentTransactions: WorkspaceInvestmentTransaction[];
   portfolioSnapshots: WorkspacePortfolioSnapshot[];
   people: WorkspacePerson[];
+  propertyProjects: WorkspacePropertyProject[];
+  propertyExpenses: WorkspacePropertyExpense[];
   locationPeriods: WorkspaceLocationPeriod[];
   recurringObligations: WorkspaceRecurringObligation[];
   insights: WorkspaceInsight[];
@@ -247,6 +277,8 @@ export function createEmptyWorkspace(mode: WorkspaceData["mode"] = "signed-out",
     investmentTransactions: [],
     portfolioSnapshots: [],
     people: [],
+    propertyProjects: [],
+    propertyExpenses: [],
     locationPeriods: [],
     recurringObligations: [],
     insights: [],
@@ -327,6 +359,8 @@ export const demoWorkspace: WorkspaceData = {
   investmentTransactions: [],
   portfolioSnapshots: [],
   people: [],
+  propertyProjects: [],
+  propertyExpenses: [],
   locationPeriods: demoLocations,
   recurringObligations: [{ id: "demo-recurring-insurance", provider_name: "Hospital Alemán", merchant_key: "hospital alemán", frequency: "monthly", status: "active", country_code: "AR", expected_amount: "120", currency: "USD", next_expected_on: "2026-09-05", category: { name: "Health insurance", parent: { name: "Health" } }, transaction_ids: demoInsuranceIds }],
   insights: [{ key: "demo-uncategorized", title: "Six payments still need a category", body: "Open the supporting transactions and teach Empower what they represent.", priority: 90, transactionIds: demoExpenseTransactions.filter((transaction) => !transaction.category_id).map((transaction) => transaction.id) }],

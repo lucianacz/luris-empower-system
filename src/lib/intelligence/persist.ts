@@ -150,7 +150,7 @@ async function applyKnownMerchantRules(supabase: SupabaseClient, userId: string,
         const { error } = await supabase.from("transactions").update(update).eq("user_id", userId).in("id", merchantTransactions.slice(index, index + 500).map((transaction) => transaction.id));
         if (error) throw error;
       }
-      const { error: merchantError } = await supabase.from("merchant_profiles").upsert({ user_id: userId, merchant_key: merchantKey, display_name: merchantName, category_id: categoryId, person_id: personId, country_code: rule.countryCode ?? merchantTransactions.find((transaction) => transaction.merchant_country)?.merchant_country ?? null, notes: rule.notes ?? rule.personRole ?? null }, { onConflict: "user_id,merchant_key" });
+      const { error: merchantError } = await supabase.from("merchant_profiles").upsert({ user_id: userId, merchant_key: merchantKey, display_name: merchantName, category_id: categoryId, person_id: personId, country_code: rule.countryCode ?? merchantTransactions.find((transaction) => transaction.merchant_country)?.merchant_country ?? null, transaction_label: rule.transactionLabel ?? null, notes: rule.notes ?? rule.personRole ?? null }, { onConflict: "user_id,merchant_key" });
       if (merchantError) throw merchantError;
       for (const transaction of merchantTransactions) {
         transaction.category_id = categoryId;
@@ -186,7 +186,7 @@ async function applySpecificCategoryRefinements(supabase: SupabaseClient, userId
     { categoryName: "Hotels", pattern: /hotel|hostel|booking(?:\.com|\.[a-z])?|lodging|accommodation/i, fromCategories: new Set(["Travel", "Hotels"]) },
     { categoryName: "Car rental", pattern: /car rental|alquiler de auto|\benterprise\b|rent[ -]?a[ -]?car/i, fromCategories: new Set(["Travel", "Transport", "Car rental"]) },
     { categoryName: "Car repairs", pattern: /car repair|reparaci[oó]n.*(?:auto|carro)|mec[aá]nic|neum[aá]tic|la casa del hyundai|centro llantero del sur/i, fromCategories: new Set(["Transport", "Car repairs"]) },
-    { categoryName: "Fuel & gas", pattern: /fuel|gasolin|combustible|servicentro|gas station|lumicentro|terpel|racetrac/i, fromCategories: new Set(["Transport", "Fuel & gas"]) },
+    { categoryName: "Fuel & gas", pattern: /fuel|\bgas\b|gasolin|combustible|servicentro|gas station|lumicentro|terpel|racetrac/i, fromCategories: new Set(["Transport", "Fuel & gas"]) },
     { categoryName: "Parking", pattern: /parking|estacionamiento/i, fromCategories: new Set(["Transport", "Parking"]) },
     { categoryName: "Tolls & highways", pattern: /\bausol\b|toll|peaje|autopista|ruta 27/i, fromCategories: new Set(["Transport", "Tolls & highways"]) },
   ];
@@ -239,6 +239,59 @@ async function applySpecificCategoryRefinements(supabase: SupabaseClient, userId
       transaction.transaction_label = "Papaya Kids · company expense";
     }
   }
+
+  const partnerPaypal = transactions.filter((transaction) => transaction.account_owner?.role === "partner" && transaction.status === "posted" && Number(transaction.amount) < 0 && /\bpaypal\b/i.test(cleanDescription(transaction.description)));
+  if (papayaKidsCategoryId && partnerPaypal.length) {
+    for (let index = 0; index < partnerPaypal.length; index += 500) {
+      const { error } = await supabase.from("transactions").update({ category_id: papayaKidsCategoryId, kind: "expense", excluded_from_totals: false, beneficiary_scope: "personal", transaction_label: "Papaya Kids · PayPal" }).eq("user_id", userId).in("id", partnerPaypal.slice(index, index + 500).map((transaction) => transaction.id));
+      if (error) throw error;
+    }
+    for (const transaction of partnerPaypal) {
+      transaction.category_id = papayaKidsCategoryId;
+      transaction.category = categoryFor("Papaya Kids");
+      transaction.kind = "expense";
+      transaction.excluded_from_totals = false;
+      transaction.beneficiary_scope = "personal";
+      transaction.transaction_label = "Papaya Kids · PayPal";
+    }
+  }
+
+  const therapyRows = transactions.filter((transaction) => /daniel\s+jesica\s+solange/i.test(cleanDescription(transaction.description)));
+  const therapyExpenses = therapyRows.filter((transaction) => transaction.status === "posted" && Number(transaction.amount) < 0);
+  const therapyZeroRows = therapyRows.filter((transaction) => Number(transaction.amount) === 0);
+  for (let index = 0; index < therapyExpenses.length; index += 500) {
+    const { error } = await supabase.from("transactions").update({ kind: "expense", excluded_from_totals: false, beneficiary_scope: "personal", transaction_label: "Weekly therapy" }).eq("user_id", userId).in("id", therapyExpenses.slice(index, index + 500).map((transaction) => transaction.id));
+    if (error) throw error;
+  }
+  for (let index = 0; index < therapyZeroRows.length; index += 500) {
+    const { error } = await supabase.from("transactions").update({ kind: "unknown", excluded_from_totals: true, beneficiary_scope: "personal", transaction_label: "Statement reference only · no charge" }).eq("user_id", userId).in("id", therapyZeroRows.slice(index, index + 500).map((transaction) => transaction.id));
+    if (error) throw error;
+  }
+  for (const transaction of therapyExpenses) {
+    transaction.kind = "expense";
+    transaction.excluded_from_totals = false;
+    transaction.beneficiary_scope = "personal";
+    transaction.transaction_label = "Weekly therapy";
+  }
+  for (const transaction of therapyZeroRows) {
+    transaction.kind = "unknown";
+    transaction.excluded_from_totals = true;
+    transaction.beneficiary_scope = "personal";
+    transaction.transaction_label = "Statement reference only · no charge";
+  }
+
+  const mistakenSatuTransfers = transactions.filter((transaction) => transaction.category?.name === "Satu Lagi Villa" && transaction.currency !== "USD" && /julian(?:\s+aaron)?\s+stivelman/i.test(cleanDescription(transaction.description)));
+  for (let index = 0; index < mistakenSatuTransfers.length; index += 500) {
+    const { error } = await supabase.from("transactions").update({ category_id: null, kind: "unknown", excluded_from_totals: true, transaction_label: "Transfer with Julian · not Satu Lagi" }).eq("user_id", userId).in("id", mistakenSatuTransfers.slice(index, index + 500).map((transaction) => transaction.id));
+    if (error) throw error;
+  }
+  for (const transaction of mistakenSatuTransfers) {
+    transaction.category_id = null;
+    transaction.category = null;
+    transaction.kind = "unknown";
+    transaction.excluded_from_totals = true;
+    transaction.transaction_label = "Transfer with Julian · not Satu Lagi";
+  }
 }
 
 async function applyHouseholdRules(supabase: SupabaseClient, userId: string, transactions: WorkspaceTransaction[]) {
@@ -248,6 +301,7 @@ async function applyHouseholdRules(supabase: SupabaseClient, userId: string, tra
   const asiaCurrencies = new Set(["BND", "CNY", "HKD", "IDR", "INR", "JPY", "KRW", "LKR", "MOP", "MYR", "PHP", "SGD", "THB", "TWD", "VND"]);
   const sharedIds: string[] = [];
   const personalSoloTripIds: string[] = [];
+  const alwaysPersonalCategories = new Set(["Alternative therapy", "Dentist", "Dermatology", "Health insurance", "Papaya Kids", "Private health", "Therapy", "Workshops & classes"]);
 
   for (const transaction of transactions) {
     if (transaction.status !== "posted" || transaction.excluded_from_totals || transaction.kind !== "expense") continue;
@@ -256,15 +310,17 @@ async function applyHouseholdRules(supabase: SupabaseClient, userId: string, tra
     const travelDestination = transaction.travel_destination?.toUpperCase() ?? null;
     const isCanadaTravel = country === "CA" || travelDestination === "CA" || transaction.original_currency === "CAD";
     const isJulianBrazilTrip = transaction.account_owner?.role === "partner" && (country === "BR" || travelDestination === "BR" || transaction.original_currency === "BRL");
-    const isSoloTrip = isCanadaTravel || isJulianBrazilTrip;
+    const isSoloTrip = isCanadaTravel || isJulianBrazilTrip || alwaysPersonalCategories.has(categoryName ?? "");
     const isTravelOrCar = sharedTravelAndCar.has(categoryName ?? "");
-    const isMexico = country === "MX";
+    const isMexico = country === "MX" && ["Dining out", "Groceries", "Housing"].includes(categoryName ?? "");
+    const locationName = transaction.location_period?.location.name?.toLocaleLowerCase() ?? "";
     const isCostaRicaRestaurant = country === "CR" && categoryName === "Dining out";
+    const isMiamiRestaurant = transaction.account_owner?.role === "self" && locationName.includes("miami") && categoryName === "Dining out";
     const isSharedAsiaExpense = sharedAsiaCategories.has(categoryName ?? "") && (asiaCountryCodes.has(country ?? "") || asiaCurrencies.has(transaction.original_currency?.toUpperCase() ?? transaction.currency.toUpperCase()));
     const isYouTube = /youtube\s*\(via apple\)|apple\.com(?:\/|\s+)bill/i.test(`${transaction.merchant_name ?? ""} ${transaction.description}`) && Math.abs(Number(transaction.amount)) === 9.49;
 
     if (isSoloTrip) personalSoloTripIds.push(transaction.id);
-    else if (isTravelOrCar || isMexico || isCostaRicaRestaurant || isSharedAsiaExpense || isYouTube) sharedIds.push(transaction.id);
+    else if (isTravelOrCar || isMexico || isCostaRicaRestaurant || isMiamiRestaurant || isSharedAsiaExpense || isYouTube) sharedIds.push(transaction.id);
   }
 
   for (let index = 0; index < sharedIds.length; index += 500) {

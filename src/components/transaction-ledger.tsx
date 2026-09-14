@@ -47,7 +47,7 @@ export function TransactionLedger({ workspace, mutate, selection, clearSelection
   };
   const saveLabel = async (transactionId: string, transactionLabel: string) => {
     try {
-      await mutate("/api/transactions/" + transactionId, "PATCH", { transactionLabel: transactionLabel.trim() || null, applyToSimilar: false });
+      await mutate("/api/transactions/" + transactionId, "PATCH", { transactionLabel: transactionLabel.trim() || null });
     } catch (error) {
       window.alert(messageOf(error));
     }
@@ -102,7 +102,7 @@ function TransactionRow({ transaction, categoryOptions: options, live, saveCateg
         aria-label={"Label for " + transaction.description}
         disabled={!live}
         defaultValue={transaction.transaction_label ?? ""}
-        placeholder="Add a label below the original name"
+        placeholder="Label this merchant/person everywhere"
         onBlur={(event) => { if (event.currentTarget.value.trim() !== (transaction.transaction_label ?? "")) void saveLabel(transaction.id, event.currentTarget.value); }}
         onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); if (event.key === "Escape") { event.currentTarget.value = transaction.transaction_label ?? ""; event.currentTarget.blur(); } }}
         className="mt-1 h-7 w-full rounded-md border border-dashed border-[var(--line)] bg-transparent px-2 text-xs font-medium text-[var(--forest)] placeholder:font-normal placeholder:text-[var(--muted)] disabled:border-transparent"

@@ -45,6 +45,12 @@ describe("default expense categories", () => {
     expect(classify("HKAIRWEB-USD2504062307273")).toBe("Flights");
     expect(classify("Card charge (Prismalink*IND VISAARR)")).toBe("Visas");
     expect(classify("Card charge (MYONGDONGYEBBEUMJOOEUB)")).toBe("Private health");
+    expect(classify("Card charge (AEROMEXICO COM)")).toBe("Flights");
+    expect(classify("TACO FISH LA PAZ")).toBe("Dining out");
+    expect(classify("OXXO 1234")).toBe("Groceries");
+    expect(classify("OXXO GAS 1234")).toBe("Fuel & gas");
+    expect(classify("OPEN25HS")).toBe("Groceries");
+    expect(classify("NEWGARDEN")).toBe("Groceries");
     expect(matchKnownMerchant("SP SWEET-CHEMISTRY-SKI")?.excludedFromTotals).toBe(true);
     expect(matchKnownMerchant("OPENAI *CHATGPT SUBSCR")?.recurrenceHint).toBe("monthly");
     expect(matchKnownMerchant("Card charge (GOOGLE *Google One)")?.recurrenceHint).toBe("annual");
@@ -92,5 +98,6 @@ describe("default expense categories", () => {
     expect(resolvedKnownMerchantKind(matchKnownMerchant("Payment from Deel"), "500", "income")).toBe("transfer");
     expect(matchKnownMerchant("Payment to Julian Aaron Stivelman", { amount: "-60000", currency: "USD" })?.categoryName).toBe("Satu Lagi Villa");
     expect(matchKnownMerchant("Payment to Julian Aaron Stivelman", { amount: "-79", currency: "USD" })?.categoryName).not.toBe("Satu Lagi Villa");
+    expect(matchKnownMerchant("Payment to Julian Aaron Stivelman", { amount: "-60000", currency: "ARS" })?.categoryName).not.toBe("Satu Lagi Villa");
   });
 });

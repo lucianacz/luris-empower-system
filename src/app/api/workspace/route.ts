@@ -17,7 +17,7 @@ export async function GET() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return Response.json(createEmptyWorkspace("signed-out"));
 
-  const [accounts, questions, chains, imports, categories, investments, investmentTransactions, portfolioSnapshots, people, locationPeriods, locationHints, recurringObligations, profile] = await Promise.all([
+  const [accounts, questions, chains, imports, categories, investments, investmentTransactions, portfolioSnapshots, people, propertyProjects, propertyExpenses, locationPeriods, locationHints, recurringObligations, profile] = await Promise.all([
     supabase.from("financial_accounts").select("id,institution,name,currency,last_imported_at,last_transaction_at,coverage_start,coverage_end,owner_person_id,owner:people!financial_accounts_owner_person_id_fkey(id,display_name,role)").eq("user_id", user.id).order("name"),
     supabase.from("questions").select("id,prompt,question_type,created_at,transaction_id,context,priority,supporting_transaction_ids,group_key").eq("user_id", user.id).eq("status", "open").order("priority", { ascending: false }).order("created_at", { ascending: false }).limit(100),
     supabase.from("transfer_chains").select("id,status,confidence,source_amount,source_currency,fee_amount,notes,transfer_chain_members(sequence,allocated_amount,allocated_currency,transaction:transactions(id,occurred_at,description,amount,currency,kind,status,excluded_from_totals,fee_amount,category_id,account:financial_accounts(name,institution)))").eq("user_id", user.id).order("created_at", { ascending: false }).limit(50),
@@ -27,12 +27,14 @@ export async function GET() {
     supabase.from("investment_transactions").select("id,occurred_at,transaction_type,gross_amount,fee_amount,currency,asset:investment_assets(symbol,name),account:investment_accounts(name,owner_person_id,owner:people!investment_accounts_owner_person_id_fkey(id,display_name,role))").eq("user_id", user.id).order("occurred_at", { ascending: false }).limit(500),
     supabase.from("portfolio_snapshots").select("id,valuation_date,cash_value,positions_value,total_value,contributions,withdrawals,dividends,interest,fees,taxes,realized_profit_loss,unrealized_profit_loss,currency,account:investment_accounts(name,owner_person_id,owner:people!investment_accounts_owner_person_id_fkey(id,display_name,role))").eq("user_id", user.id).order("valuation_date", { ascending: false }).limit(120),
     supabase.from("people").select("id,display_name,role,notes").eq("user_id", user.id).order("role").order("display_name"),
+    supabase.from("property_projects").select("id,name,display_name,location_name,currency,status,notes").eq("user_id", user.id).order("created_at"),
+    supabase.from("property_expenses").select("id,project_id,transaction_id,description,transaction_label,expense_type,amount,principal_amount,fee_amount,currency,paid_on,payment_method,source_type,notes,paid_by:people!property_expenses_paid_by_id_fkey(id,display_name,role)").eq("user_id", user.id).order("paid_on", { ascending: false, nullsFirst: false }),
     supabase.from("location_periods").select("id,starts_on,ends_on,status,period_type,trip_purpose,confidence,explanation,evidence,person_id,person:people!location_periods_person_id_fkey(id,display_name,role),location:locations(id,name,country_code,country_name,default_currency)").eq("user_id", user.id).order("starts_on"),
     supabase.from("location_currency_hints").select("currency,weight,location:locations(country_code,country_name,name)").eq("user_id", user.id),
     supabase.from("recurring_obligations").select("id,provider_name,merchant_key,frequency,status,country_code,expected_amount,currency,next_expected_on,category:categories(name),recurring_obligation_transactions(transaction_id)").eq("user_id", user.id).order("provider_name"),
     supabase.from("profiles").select("ars_exchange_rate_method").eq("id", user.id).maybeSingle(),
   ]);
-  const errors = [accounts.error, questions.error, chains.error, imports.error, categories.error, investments.error, investmentTransactions.error, portfolioSnapshots.error, people.error, locationPeriods.error, locationHints.error, recurringObligations.error, profile.error].filter(Boolean);
+  const errors = [accounts.error, questions.error, chains.error, imports.error, categories.error, investments.error, investmentTransactions.error, portfolioSnapshots.error, people.error, propertyProjects.error, propertyExpenses.error, locationPeriods.error, locationHints.error, recurringObligations.error, profile.error].filter(Boolean);
   if (errors.length) return Response.json({ error: errors[0]?.message ?? "Workspace data could not be loaded." }, { status: 422 });
   const transactions = await loadTransactions(supabase, user.id);
   const duplicateCountByBatch = transactions.reduce((counts, transaction) => {
@@ -75,6 +77,8 @@ export async function GET() {
     investmentTransactions: (investmentTransactions.data ?? []).map((transaction) => ({ ...transaction, asset: firstRelation(transaction.asset), account: firstRelation(transaction.account) })),
     portfolioSnapshots: (portfolioSnapshots.data ?? []).map((snapshot) => ({ ...snapshot, account: firstRelation(snapshot.account) })),
     people: people.data ?? [],
+    propertyProjects: propertyProjects.data ?? [],
+    propertyExpenses: (propertyExpenses.data ?? []).map((expense) => ({ ...expense, paid_by: firstRelation(expense.paid_by) })),
     locationPeriods: [...normalizedLocationPeriods, ...locationSuggestions.map((suggestion) => ({ id: `suggested:${suggestion.key}`, starts_on: suggestion.startsOn, ends_on: suggestion.endsOn, status: "suggested" as const, period_type: "stay" as const, trip_purpose: null, confidence: suggestion.confidence, explanation: suggestion.explanation, evidence: { ...suggestion.evidence, transactionIds: suggestion.transactionIds }, location: { id: `suggested-location:${suggestion.countryCode}`, name: suggestion.countryName, country_code: suggestion.countryCode, country_name: suggestion.countryName, default_currency: null } }))],
     recurringObligations: (recurringObligations.data ?? []).map((obligation) => ({ ...obligation, category: firstRelation(obligation.category), transaction_ids: (obligation.recurring_obligation_transactions ?? []).map((item) => item.transaction_id), recurring_obligation_transactions: undefined })),
     suggestedQuestions: intelligence.questions,

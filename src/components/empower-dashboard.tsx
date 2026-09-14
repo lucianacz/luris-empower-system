@@ -6,6 +6,7 @@ import {
   CircleHelp,
   FileUp,
   FolderArchive,
+  House,
   LayoutDashboard,
   Link2,
   MapPin,
@@ -30,19 +31,21 @@ import { ImportWorkspace } from "@/components/import-workspace";
 import { IncomeSavings } from "@/components/income-savings";
 import { LocationsAndStays } from "@/components/locations-stays";
 import { QuestionsInbox } from "@/components/questions-inbox";
+import { PropertyProject } from "@/components/property-project";
 import { RecurringExpenses } from "@/components/recurring-expenses";
 import { ReportingWorkspace } from "@/components/reporting-workspace";
 import { TransactionLedger } from "@/components/transaction-ledger";
 import { createEmptyWorkspace, type WorkspaceData } from "@/lib/workspace/demo";
 
-type View = "spending" | "income" | "transactions" | "questions" | "locations" | "recurring" | "cash" | "files" | "imports" | "investments" | "transfers" | "settings";
+type View = "spending" | "income" | "property" | "transactions" | "questions" | "locations" | "recurring" | "cash" | "files" | "imports" | "investments" | "transfers" | "settings";
 export type MoneyView = "luciana" | "shared" | "julian";
 const moneyViews = new Set<MoneyView>(["luciana", "shared", "julian"]);
-const views = new Set<View>(["spending", "income", "transactions", "questions", "locations", "recurring", "cash", "files", "imports", "investments", "transfers", "settings"]);
+const views = new Set<View>(["spending", "income", "property", "transactions", "questions", "locations", "recurring", "cash", "files", "imports", "investments", "transfers", "settings"]);
 
 const viewTitles: Record<View, string> = {
   spending: "How you use your money",
   income: "Income and approximate savings",
+  property: "Satu Lagi House",
   transactions: "Transactions and evidence",
   questions: "Questions inbox",
   locations: "Locations and stays",
@@ -184,6 +187,7 @@ export function EmpowerDashboard() {
         <nav className="mt-5 space-y-1 text-sm" aria-label="Workspace">
           <NavItem icon={LayoutDashboard} label="Spending" active={currentView === "spending"} onSelect={() => navigate("spending")} />
           <NavItem icon={TrendingUp} label="Income & savings" active={currentView === "income"} onSelect={() => navigate("income")} />
+          <NavItem icon={House} label="Satu Lagi house" active={currentView === "property"} onSelect={() => navigate("property")} />
           <NavItem icon={WalletCards} label="Transactions" active={currentView === "transactions"} onSelect={() => { setSelection(null); navigate("transactions"); }} />
           <NavItem icon={CircleHelp} label="Questions" badge={pendingCount} active={currentView === "questions"} onSelect={() => navigate("questions")} />
           <NavItem icon={MapPin} label="Locations" badge={locationCount} active={currentView === "locations"} onSelect={() => navigate("locations")} />
@@ -215,6 +219,7 @@ export function EmpowerDashboard() {
         {notice ? <div role="status" className="mt-5 flex items-center justify-between gap-3 rounded-xl border border-[var(--line)] bg-[var(--surface)] px-4 py-3 text-sm"><span>{notice}</span><button aria-label="Dismiss message" onClick={() => setNotice("")}><X aria-hidden="true" className="size-4" /></button></div> : null}
         {currentView === "spending" ? <ReportingWorkspace workspace={visibleWorkspace} moneyView={moneyView} loading={loading} openTransactions={openTransactions} openQuestions={() => navigate("questions")} openLocations={() => navigate("locations")} /> : null}
         {currentView === "income" ? <IncomeSavings workspace={moneyView === "shared" ? workspace : visibleWorkspace} combinedHousehold={moneyView === "shared"} openTransactions={openTransactions} /> : null}
+        {currentView === "property" ? <PropertyProject workspace={visibleWorkspace} profile={moneyView} openTransactions={openTransactions} /> : null}
         {currentView === "transactions" ? <><TransactionLedger workspace={transactionWorkspace} mutate={mutate} selection={selection} clearSelection={() => setSelection(null)} /><CategoryCreator disabled={workspace.mode !== "live"} mutate={mutate} /></> : null}
         {currentView === "questions" ? <QuestionsInbox workspace={visibleWorkspace} mutate={mutate} openTransactions={openTransactions} /> : null}
         {currentView === "locations" ? <LocationsAndStays workspace={visibleWorkspace} personId={activeOwnerId} mutate={mutate} openTransactions={openTransactions} /> : null}
@@ -260,6 +265,8 @@ function profileWorkspace(workspace: WorkspaceData, view: MoneyView): WorkspaceD
     return period.person_id ? period.person_id === personId : personRole === "self";
   });
   const investmentBelongs = (account: { owner_person_id?: string | null; owner?: { role: string } | null } | null) => view !== "shared" && (account?.owner_person_id ? account.owner_person_id === personId : account?.owner?.role ? account.owner.role === personRole : personRole === "self");
+  const propertyExpenses = view === "shared" ? workspace.propertyExpenses : workspace.propertyExpenses.filter((expense) => expense.paid_by?.role === personRole);
+  const propertyProjectIds = new Set(propertyExpenses.map((expense) => expense.project_id));
   const uncategorized = visibleTransactions.filter((transaction) => transaction.status === "posted" && !transaction.excluded_from_totals && transaction.kind === "expense" && !transaction.category_id).length;
   const missingFx = visibleTransactions.filter((transaction) => transaction.status === "posted" && !transaction.excluded_from_totals && transaction.kind === "expense" && transaction.currency !== "USD" && !transaction.reporting_value).length;
   const suggestedQuestions = workspace.suggestedQuestions.filter((question) => evidenceIntersects(question.transactionIds));
@@ -274,6 +281,8 @@ function profileWorkspace(workspace: WorkspaceData, view: MoneyView): WorkspaceD
     questions: visibleQuestions,
     suggestedQuestions,
     locationPeriods: visibleLocationPeriods,
+    propertyProjects: workspace.propertyProjects.filter((project) => propertyProjectIds.has(project.id)),
+    propertyExpenses,
     recurringObligations: workspace.recurringObligations.filter((obligation) => evidenceIntersects(obligation.transaction_ids)),
     insights: workspace.insights.filter((insight) => evidenceIntersects(insight.transactionIds)),
     transferChains: workspace.transferChains.filter((chain) => chain.members.some((member) => member.transaction && transactionIds.has(member.transaction.id))),

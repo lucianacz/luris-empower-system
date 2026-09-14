@@ -158,12 +158,16 @@ export async function POST(request: Request) {
       const categoryIds = await ensureDefaultCategories(supabase, user.id);
       const { data: savedRules, error: rulesError } = await supabase.from("categorization_rules").select("match_text,category_id").eq("user_id", user.id).eq("enabled", true);
       if (rulesError) throw rulesError;
+      const { data: merchantProfiles, error: merchantProfilesError } = await supabase.from("merchant_profiles").select("merchant_key,transaction_label").eq("user_id", user.id).not("transaction_label", "is", null);
+      if (merchantProfilesError) throw merchantProfilesError;
       const savedCategoryIds = new Map((savedRules ?? []).map((rule) => [normalizeMatchText(rule.match_text), rule.category_id]));
+      const savedMerchantLabels = new Map((merchantProfiles ?? []).map((profile) => [profile.merchant_key, profile.transaction_label]));
       const transactionRows = accepted.map((transaction) => {
         const known = matchKnownMerchant(transaction.description, transaction);
         const kind = resolvedKnownMerchantKind(known, transaction.amount, transaction.kind);
         const categoryName = suggestDefaultCategory({ ...transaction, kind });
         const merchantName = resolvedKnownMerchantName(known, transaction.description);
+        const merchantKey = canonicalMerchant(merchantName);
         const categoryId = known
           ? categoryIds.get(known.categoryName ?? "") ?? null
           : savedCategoryIds.get(normalizeMatchText(transaction.description)) ?? categoryIds.get(categoryName ?? "") ?? null;
@@ -177,9 +181,9 @@ export async function POST(request: Request) {
           occurred_at: transaction.occurredAt,
           posted_at: transaction.postedAt,
           description: transaction.description,
-          transaction_label: known?.transactionLabel ?? (kind === "cash_withdrawal" ? "Cash withdrawal" : null),
+          transaction_label: known?.transactionLabel ?? savedMerchantLabels.get(merchantKey) ?? (kind === "cash_withdrawal" ? "Cash withdrawal" : null),
           merchant_name: merchantName,
-          merchant_key: canonicalMerchant(merchantName),
+          merchant_key: merchantKey,
           merchant_country: known?.countryCode ?? normalizeUserCountryHint(transaction.metadata.merchantCountry),
           merchant_city: typeof transaction.metadata.merchantCity === "string" ? transaction.metadata.merchantCity : null,
           amount: transaction.amount,
