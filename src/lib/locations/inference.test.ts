@@ -30,6 +30,11 @@ describe("dynamic location inference", () => {
     expect(result[0]).toMatchObject({ countryCode: "CA", countryName: "Canada" });
   });
 
+  it("keeps a rejected country-period suggestion dismissed", () => {
+    const rejected = [{ id: "rejected-br", starts_on: "2026-03-19", ends_on: "2026-03-25", status: "rejected" as const, period_type: "stay" as const, trip_purpose: null, confidence: 0.5, explanation: "User rejected it.", evidence: {}, location: { id: "br", name: "Brazil", country_code: "BR", country_name: "Brazil", default_currency: "BRL" } }];
+    expect(inferLocationSuggestions([row("1", "2026-03-20"), row("2", "2026-03-21"), row("3", "2026-03-22"), row("4", "2026-03-24")], rejected)).toEqual([]);
+  });
+
   it("does not treat subscription processors or Airbnb as physical stays", () => {
     const rows = [
       { ...row("1", "2026-02-01", "USD"), description: "APPLE.COM/BILL", merchant_country: "US", category: { name: "Subscriptions & software", life_area: "Digital", is_essential: false, color: "#6c63a8" } },

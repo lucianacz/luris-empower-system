@@ -40,7 +40,7 @@ export function inferLocationSuggestions(transactions: WorkspaceTransaction[], c
     signals.set(country.code, [...(signals.get(country.code) ?? []), signal]);
   }
 
-  return [...signals.values()].flatMap((items) => clusterSignals(items, confirmed)).filter((suggestion) => !confirmed.some((period) => period.status === "confirmed" && overlaps(period.starts_on, period.ends_on, suggestion.startsOn, suggestion.endsOn))).sort((left, right) => left.startsOn.localeCompare(right.startsOn));
+  return [...signals.values()].flatMap((items) => clusterSignals(items, confirmed)).filter((suggestion) => !confirmed.some((period) => overlaps(period.starts_on, period.ends_on, suggestion.startsOn, suggestion.endsOn) && (period.status === "confirmed" || (period.status === "rejected" && period.location.country_code === suggestion.countryCode)))).sort((left, right) => left.startsOn.localeCompare(right.startsOn));
 }
 
 interface Signal { transactionId: string; date: string; countryCode: string; countryName: string; source: "merchant_country" | "currency" | "flight_destination"; housing: boolean }
@@ -67,7 +67,7 @@ function isRemoteOrProcessorMerchant(transaction: WorkspaceTransaction) {
 }
 
 function clusterSignals(items: Signal[], confirmed: WorkspaceLocationPeriod[]) {
-  const sorted = items.filter((item) => !confirmed.some((period) => period.status === "confirmed" && period.starts_on <= item.date && (period.ends_on ?? "9999-12-31") >= item.date)).sort((left, right) => left.date.localeCompare(right.date));
+  const sorted = items.filter((item) => !confirmed.some((period) => period.starts_on <= item.date && (period.ends_on ?? "9999-12-31") >= item.date && (period.status === "confirmed" || (period.status === "rejected" && period.location.country_code === item.countryCode)))).sort((left, right) => left.date.localeCompare(right.date));
   const clusters: Signal[][] = [];
   for (const item of sorted) {
     const active = clusters.at(-1);
