@@ -3,6 +3,7 @@ import { hasSupabaseEnv } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
 
 const periodSchema = z.object({
+  personId: z.string().uuid().nullable().optional(),
   countryName: z.string().trim().min(1).max(100),
   countryCode: z.string().trim().min(2).max(3).transform((value) => value.toUpperCase()).nullable().optional(),
   locationName: z.string().trim().min(1).max(100).optional(),
@@ -26,6 +27,10 @@ export async function POST(request: Request) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return Response.json({ error: "Sign in first." }, { status: 401 });
+  if (input.data.personId) {
+    const { data: person } = await supabase.from("people").select("id").eq("id", input.data.personId).eq("user_id", user.id).maybeSingle();
+    if (!person) return Response.json({ error: "Choose a person from this workspace." }, { status: 400 });
+  }
   const name = input.data.locationName || input.data.countryName;
   const { data: location, error: locationError } = await supabase.from("locations").upsert({ user_id: user.id, name, country_code: input.data.countryCode ?? null, country_name: input.data.countryName, default_currency: input.data.defaultCurrency ?? null }, { onConflict: "user_id,country_code,name" }).select("id").single();
   if (locationError) return Response.json({ error: locationError.message }, { status: 422 });
@@ -34,23 +39,25 @@ export async function POST(request: Request) {
     if (hintError) return Response.json({ error: hintError.message }, { status: 422 });
   }
   let existingQuery = supabase.from("location_periods").select("id").eq("user_id", user.id).eq("location_id", location.id).eq("starts_on", input.data.startsOn);
+  existingQuery = input.data.personId ? existingQuery.eq("person_id", input.data.personId) : existingQuery.is("person_id", null);
   existingQuery = input.data.endsOn ? existingQuery.eq("ends_on", input.data.endsOn) : existingQuery.is("ends_on", null);
   const { data: existingPeriod, error: existingPeriodError } = await existingQuery.limit(1).maybeSingle();
   if (existingPeriodError) return Response.json({ error: existingPeriodError.message }, { status: 422 });
   if (existingPeriod) {
-    const { error: updateError } = await supabase.from("location_periods").update({ status: input.data.status, period_type: input.data.periodType, trip_purpose: input.data.tripPurpose ?? null, confidence: input.data.confidence, explanation: input.data.explanation, evidence: { ...input.data.evidence, transactionIds: input.data.transactionIds } }).eq("id", existingPeriod.id).eq("user_id", user.id);
+    const { error: updateError } = await supabase.from("location_periods").update({ person_id: input.data.personId ?? null, status: input.data.status, period_type: input.data.periodType, trip_purpose: input.data.tripPurpose ?? null, confidence: input.data.confidence, explanation: input.data.explanation, evidence: { ...input.data.evidence, transactionIds: input.data.transactionIds } }).eq("id", existingPeriod.id).eq("user_id", user.id);
     if (updateError) return Response.json({ error: updateError.message }, { status: 422 });
-    if (input.data.status === "confirmed") await assignPeriodTransactions(supabase, user.id, existingPeriod.id, input.data.startsOn, input.data.endsOn ?? input.data.startsOn, input.data.transactionIds);
+    if (input.data.status === "confirmed") await assignPeriodTransactions(supabase, user.id, input.data.personId ?? null, existingPeriod.id, input.data.startsOn, input.data.endsOn ?? input.data.startsOn, input.data.transactionIds);
     return Response.json({ message: input.data.status === "rejected" ? "Location suggestion rejected." : "Existing location period updated without creating a duplicate.", periodId: existingPeriod.id });
   }
-  const { data: period, error: periodError } = await supabase.from("location_periods").insert({ user_id: user.id, location_id: location.id, starts_on: input.data.startsOn, ends_on: input.data.endsOn ?? null, status: input.data.status, period_type: input.data.periodType, trip_purpose: input.data.tripPurpose ?? null, confidence: input.data.confidence, explanation: input.data.explanation, evidence: { ...input.data.evidence, transactionIds: input.data.transactionIds } }).select("id").single();
+  const { data: period, error: periodError } = await supabase.from("location_periods").insert({ user_id: user.id, person_id: input.data.personId ?? null, location_id: location.id, starts_on: input.data.startsOn, ends_on: input.data.endsOn ?? null, status: input.data.status, period_type: input.data.periodType, trip_purpose: input.data.tripPurpose ?? null, confidence: input.data.confidence, explanation: input.data.explanation, evidence: { ...input.data.evidence, transactionIds: input.data.transactionIds } }).select("id").single();
   if (periodError) return Response.json({ error: periodError.message }, { status: 422 });
-  if (input.data.status === "confirmed") await assignPeriodTransactions(supabase, user.id, period.id, input.data.startsOn, input.data.endsOn ?? input.data.startsOn, input.data.transactionIds);
+  if (input.data.status === "confirmed") await assignPeriodTransactions(supabase, user.id, input.data.personId ?? null, period.id, input.data.startsOn, input.data.endsOn ?? input.data.startsOn, input.data.transactionIds);
   return Response.json({ message: input.data.status === "rejected" ? "Location suggestion rejected." : "Location period saved.", periodId: period.id }, { status: 201 });
 }
 
-async function assignPeriodTransactions(supabase: Awaited<ReturnType<typeof createClient>>, userId: string, periodId: string, from: string, to: string, transactionIds: string[]) {
+async function assignPeriodTransactions(supabase: Awaited<ReturnType<typeof createClient>>, userId: string, personId: string | null, periodId: string, from: string, to: string, transactionIds: string[]) {
   let query = supabase.from("transactions").update({ location_period_id: periodId }).eq("user_id", userId);
   query = transactionIds.length ? query.in("id", transactionIds) : query.gte("occurred_at", `${from}T00:00:00Z`).lte("occurred_at", `${to}T23:59:59Z`);
+  if (personId) query = query.eq("account_owner_id", personId);
   await query;
 }

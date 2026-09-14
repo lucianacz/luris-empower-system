@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
-const profileVersion = "confirmed-profile-2026-09-13-v2";
+const profileVersion = "confirmed-profile-2026-09-13-v3";
 const periods = [
   { name: "Mexico", countryCode: "MX", countryName: "Mexico", currency: "MXN", startsOn: "2026-01-10", endsOn: "2026-03-06", periodType: "temporary_stay", tripPurpose: null },
   { name: "Miami", countryCode: "US", countryName: "United States", currency: "USD", startsOn: "2026-03-07", endsOn: "2026-03-21", periodType: "temporary_stay", tripPurpose: null },
@@ -30,29 +30,31 @@ export async function POST() {
   if (julianError) return Response.json({ error: julianError.message }, { status: 422 });
   const { error: ownershipError } = await supabase.from("transactions").update({ account_owner_id: luciana.id, paid_by_id: luciana.id }).eq("user_id", user.id).is("account_owner_id", null);
   if (ownershipError) return Response.json({ error: ownershipError.message }, { status: 422 });
+  const { error: accountOwnershipError } = await supabase.from("financial_accounts").update({ owner_person_id: luciana.id }).eq("user_id", user.id).is("owner_person_id", null);
+  if (accountOwnershipError) return Response.json({ error: accountOwnershipError.message }, { status: 422 });
 
-  const { data: existingPeriods, error: periodLookupError } = await supabase.from("location_periods").select("id,starts_on,ends_on,status").eq("user_id", user.id).neq("status", "rejected").lte("starts_on", "2026-12-31").or("ends_on.is.null,ends_on.gte.2026-01-10");
+  const { data: existingPeriods, error: periodLookupError } = await supabase.from("location_periods").select("id,starts_on,ends_on,status").eq("user_id", user.id).eq("person_id", luciana.id).neq("status", "rejected").lte("starts_on", "2026-12-31").or("ends_on.is.null,ends_on.gte.2026-01-10");
   if (periodLookupError) return Response.json({ error: periodLookupError.message }, { status: 422 });
   const existingIds = (existingPeriods ?? []).map((period) => period.id);
   if (existingIds.length) {
     const { error } = await supabase.from("location_periods").update({ status: "rejected", explanation: "Replaced by Luciana's confirmed 2026 timeline." }).eq("user_id", user.id).in("id", existingIds);
     if (error) return Response.json({ error: error.message }, { status: 422 });
   }
-  const { error: clearLocationError } = await supabase.from("transactions").update({ location_period_id: null }).eq("user_id", user.id).gte("occurred_at", "2026-01-10T00:00:00Z");
+  const { error: clearLocationError } = await supabase.from("transactions").update({ location_period_id: null }).eq("user_id", user.id).eq("account_owner_id", luciana.id).gte("occurred_at", "2026-01-10T00:00:00Z");
   if (clearLocationError) return Response.json({ error: clearLocationError.message }, { status: 422 });
 
   for (const period of periods) {
     const { data: location, error: locationError } = await supabase.from("locations").upsert({ user_id: user.id, name: period.name, country_code: period.countryCode, country_name: period.countryName, default_currency: period.currency }, { onConflict: "user_id,country_code,name" }).select("id").single();
     if (locationError) return Response.json({ error: locationError.message }, { status: 422 });
-    const { data: createdPeriod, error: createPeriodError } = await supabase.from("location_periods").insert({ user_id: user.id, location_id: location.id, starts_on: period.startsOn, ends_on: period.endsOn, status: "confirmed", period_type: period.periodType, trip_purpose: period.tripPurpose, confidence: 1, explanation: period.startsOn === "2026-10-11" ? "Future stay manually confirmed by Luciana on September 13, 2026." : "Dates manually confirmed by Luciana on September 13, 2026.", evidence: { source: "user_confirmation", confirmedOn: "2026-09-13" } }).select("id").single();
+    const { data: createdPeriod, error: createPeriodError } = await supabase.from("location_periods").insert({ user_id: user.id, person_id: luciana.id, location_id: location.id, starts_on: period.startsOn, ends_on: period.endsOn, status: "confirmed", period_type: period.periodType, trip_purpose: period.tripPurpose, confidence: 1, explanation: period.startsOn === "2026-10-11" ? "Future stay manually confirmed by Luciana on September 13, 2026." : "Dates manually confirmed by Luciana on September 13, 2026.", evidence: { source: "user_confirmation", confirmedOn: "2026-09-13" } }).select("id").single();
     if (createPeriodError) return Response.json({ error: createPeriodError.message }, { status: 422 });
-    let transactionQuery = supabase.from("transactions").update({ location_period_id: createdPeriod.id }).eq("user_id", user.id).gte("occurred_at", `${period.startsOn}T00:00:00Z`);
+    let transactionQuery = supabase.from("transactions").update({ location_period_id: createdPeriod.id }).eq("user_id", user.id).eq("account_owner_id", luciana.id).gte("occurred_at", `${period.startsOn}T00:00:00Z`);
     if (period.endsOn) transactionQuery = transactionQuery.lte("occurred_at", `${period.endsOn}T23:59:59Z`);
     const { error: transactionError } = await transactionQuery;
     if (transactionError) return Response.json({ error: transactionError.message }, { status: 422 });
   }
 
-  const { error: canadaTagError } = await supabase.from("transactions").update({ travel_destination: "CA" }).eq("user_id", user.id).or("merchant_country.eq.CA,original_currency.eq.CAD").lte("occurred_at", "2026-07-24T23:59:59Z");
+  const { error: canadaTagError } = await supabase.from("transactions").update({ travel_destination: "CA" }).eq("user_id", user.id).eq("account_owner_id", luciana.id).or("merchant_country.eq.CA,original_currency.eq.CAD").lte("occurred_at", "2026-07-24T23:59:59Z");
   if (canadaTagError) return Response.json({ error: canadaTagError.message }, { status: 422 });
 
   const intelligence = await rebuildSpendingIntelligence(supabase, user.id);

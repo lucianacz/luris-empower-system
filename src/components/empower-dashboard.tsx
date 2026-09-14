@@ -36,7 +36,8 @@ import { TransactionLedger } from "@/components/transaction-ledger";
 import { createEmptyWorkspace, type WorkspaceData } from "@/lib/workspace/demo";
 
 type View = "spending" | "income" | "transactions" | "questions" | "locations" | "recurring" | "cash" | "files" | "imports" | "investments" | "transfers" | "settings";
-type MoneyView = "all" | "luciana" | "shared" | "julian";
+type MoneyView = "luciana" | "shared" | "julian";
+const moneyViews = new Set<MoneyView>(["luciana", "shared", "julian"]);
 const views = new Set<View>(["spending", "income", "transactions", "questions", "locations", "recurring", "cash", "files", "imports", "investments", "transfers", "settings"]);
 
 const viewTitles: Record<View, string> = {
@@ -61,7 +62,7 @@ export function EmpowerDashboard() {
   const [selection, setSelection] = useState<TransactionSelection | null>(null);
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState("");
-  const [moneyView, setMoneyView] = useState<MoneyView>("all");
+  const [moneyView, setMoneyView] = useState<MoneyView>("luciana");
   const profileSyncStarted = useRef(false);
 
   const refresh = useCallback(async () => {
@@ -102,8 +103,11 @@ export function EmpowerDashboard() {
 
   useEffect(() => {
     const syncViewFromUrl = () => {
-      const candidate = new URL(window.location.href).searchParams.get("view");
+      const url = new URL(window.location.href);
+      const candidate = url.searchParams.get("view");
       setCurrentView(candidate && views.has(candidate as View) ? candidate as View : "spending");
+      const requestedProfile = url.searchParams.get("profile") ?? window.localStorage.getItem("luris:profile");
+      if (requestedProfile && moneyViews.has(requestedProfile as MoneyView)) setMoneyView(requestedProfile as MoneyView);
       setMenuOpen(false);
     };
     const initialUrl = new URL(window.location.href);
@@ -129,6 +133,14 @@ export function EmpowerDashboard() {
     setCurrentView(view);
     setMenuOpen(false);
   };
+  const changeMoneyView = (view: MoneyView) => {
+    const url = new URL(window.location.href);
+    url.searchParams.set("profile", view);
+    window.history.pushState({ ...window.history.state, empowerProfile: view }, "", `${url.pathname}${url.search}${url.hash}`);
+    window.localStorage.setItem("luris:profile", view);
+    setMoneyView(view);
+    setSelection(null);
+  };
   const mutate: FinanceMutate = async (url, method, body) => {
     setNotice("");
     const response = await fetch(url, {
@@ -145,18 +157,16 @@ export function EmpowerDashboard() {
     setSelection(nextSelection);
     navigate("transactions");
   };
-  const visibleWorkspace = useMemo(() => ({ ...workspace, transactions: workspace.transactions.filter((transaction) => {
-    const ownerRole = transaction.account_owner?.role;
-    const beneficiary = transaction.beneficiary_scope ?? "personal";
-    if (moneyView === "shared") return beneficiary === "shared";
-    if (moneyView === "julian") return beneficiary !== "shared" && ownerRole === "partner";
-    if (moneyView === "luciana") return beneficiary !== "shared" && (!ownerRole || ownerRole === "self");
-    return true;
-  }) }), [moneyView, workspace]);
+  const visibleWorkspace = useMemo(() => profileWorkspace(workspace, moneyView), [moneyView, workspace]);
+  const activeOwnerId = moneyView === "luciana"
+    ? workspace.people.find((person) => person.role === "self")?.id ?? null
+    : moneyView === "julian"
+      ? workspace.people.find((person) => person.role === "partner")?.id ?? null
+      : null;
   if (loading) return <main className="grid min-h-screen place-items-center px-6"><div role="status" aria-live="polite" className="text-center"><span className="mx-auto grid size-12 place-items-center rounded-2xl bg-[var(--forest-soft)] text-[var(--forest)]"><RefreshCw aria-hidden="true" className="size-5 animate-spin" /></span><h1 className="mt-4 text-lg font-semibold">Loading your financial workspace</h1><p className="mt-2 text-sm text-[var(--muted)]">Fetching your imported transactions securely…</p></div></main>;
 
-  const pendingCount = workspace.questions.length + workspace.suggestedQuestions.length;
-  const locationCount = workspace.locationPeriods.filter((period) => period.status === "suggested").length;
+  const pendingCount = visibleWorkspace.questions.length + visibleWorkspace.suggestedQuestions.length;
+  const locationCount = visibleWorkspace.locationPeriods.filter((period) => period.status === "suggested").length;
 
   return (
     <div className="min-h-screen lg:grid lg:grid-cols-[252px_1fr]">
@@ -165,7 +175,8 @@ export function EmpowerDashboard() {
           <span className="grid size-10 place-items-center rounded-[14px] bg-[var(--forest)] text-white shadow-[0_8px_24px_rgba(33,78,69,0.22)]"><Sparkles aria-hidden="true" className="size-5" /></span>
           <div><p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">Luris</p><p className="text-lg font-semibold tracking-[-0.03em]">Empower</p></div>
         </div>
-        <nav className="mt-9 space-y-1 text-sm" aria-label="Workspace">
+        <label className="mt-5 block rounded-2xl border border-[var(--line)] bg-[var(--paper)] p-3 text-[11px] font-semibold uppercase tracking-[0.1em] text-[var(--muted)]"><span className="flex items-center gap-2"><Users aria-hidden="true" className="size-4" />Financial profile</span><select aria-label="Financial profile" value={moneyView} onChange={(event) => changeMoneyView(event.target.value as MoneyView)} className="mt-2 h-10 w-full rounded-xl border border-[var(--line)] bg-white px-3 text-sm font-semibold normal-case tracking-normal text-[var(--ink)]"><option value="luciana">Luciana</option><option value="shared">Shared household</option><option value="julian">Julian</option></select><span className="mt-2 block text-[10px] font-normal normal-case leading-4 tracking-normal">{visibleWorkspace.transactions.length} transactions in this profile</span></label>
+        <nav className="mt-5 space-y-1 text-sm" aria-label="Workspace">
           <NavItem icon={LayoutDashboard} label="Spending" active={currentView === "spending"} onSelect={() => navigate("spending")} />
           <NavItem icon={TrendingUp} label="Income & savings" active={currentView === "income"} onSelect={() => navigate("income")} />
           <NavItem icon={WalletCards} label="Transactions" active={currentView === "transactions"} onSelect={() => { setSelection(null); navigate("transactions"); }} />
@@ -180,8 +191,8 @@ export function EmpowerDashboard() {
         </nav>
         <div className="mt-auto space-y-2">
           <button onClick={() => navigate("questions")} className="w-full rounded-2xl border border-[var(--line)] bg-[var(--paper)] p-3.5 text-left">
-            <span className="flex items-center gap-2 text-xs font-semibold"><ShieldCheck aria-hidden="true" className="size-4 text-[var(--forest)]" />Data quality {workspace.dataQuality.score}%</span>
-            <span className="mt-2 block text-xs leading-5 text-[var(--muted)]">{workspace.dataQuality.uncategorized} uncategorized · {workspace.dataQuality.missingFx} missing USD rates</span>
+            <span className="flex items-center gap-2 text-xs font-semibold"><ShieldCheck aria-hidden="true" className="size-4 text-[var(--forest)]" />Data quality {visibleWorkspace.dataQuality.score}%</span>
+            <span className="mt-2 block text-xs leading-5 text-[var(--muted)]">{visibleWorkspace.dataQuality.uncategorized} uncategorized · {visibleWorkspace.dataQuality.missingFx} missing USD rates</span>
           </button>
           <NavItem icon={Settings2} label="Settings" active={currentView === "settings"} onSelect={() => navigate("settings")} />
         </div>
@@ -197,22 +208,81 @@ export function EmpowerDashboard() {
           <button onClick={() => navigate("imports")} className="inline-flex h-11 items-center gap-2 rounded-xl bg-[var(--forest)] px-4 text-sm font-semibold text-white shadow-[0_8px_22px_rgba(33,78,69,0.18)]"><FileUp aria-hidden="true" className="size-4" /><span className="hidden sm:inline">Import statements</span><span className="sm:hidden">Import</span></button>
         </header>
         {notice ? <div role="status" className="mt-5 flex items-center justify-between gap-3 rounded-xl border border-[var(--line)] bg-[var(--surface)] px-4 py-3 text-sm"><span>{notice}</span><button aria-label="Dismiss message" onClick={() => setNotice("")}><X aria-hidden="true" className="size-4" /></button></div> : null}
-        <div className="mt-5 flex flex-wrap items-center gap-2 rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-2"><span className="flex items-center gap-2 px-2 text-xs font-semibold text-[var(--muted)]"><Users aria-hidden="true" className="size-4" />Money view</span>{([['all', 'All money'], ['luciana', 'Luciana personal'], ['shared', 'Shared household'], ['julian', 'Julian personal']] as const).map(([value, label]) => <button key={value} onClick={() => { setMoneyView(value); setSelection(null); }} className={`rounded-xl px-3 py-2 text-xs font-semibold ${moneyView === value ? "bg-[var(--forest)] text-white" : "bg-[var(--paper)] text-[var(--muted)]"}`}>{label}</button>)}<span className="ml-auto px-2 text-xs text-[var(--muted)]">{visibleWorkspace.transactions.length} transactions in view</span></div>
         {currentView === "spending" ? <ReportingWorkspace workspace={visibleWorkspace} loading={loading} openTransactions={openTransactions} openQuestions={() => navigate("questions")} openLocations={() => navigate("locations")} /> : null}
         {currentView === "income" ? <IncomeSavings workspace={visibleWorkspace} openTransactions={openTransactions} /> : null}
         {currentView === "transactions" ? <><TransactionLedger workspace={visibleWorkspace} mutate={mutate} selection={selection} clearSelection={() => setSelection(null)} /><CategoryCreator disabled={workspace.mode !== "live"} mutate={mutate} /></> : null}
-        {currentView === "questions" ? <QuestionsInbox workspace={workspace} mutate={mutate} openTransactions={openTransactions} /> : null}
-        {currentView === "locations" ? <LocationsAndStays workspace={workspace} mutate={mutate} openTransactions={openTransactions} /> : null}
+        {currentView === "questions" ? <QuestionsInbox workspace={visibleWorkspace} mutate={mutate} openTransactions={openTransactions} /> : null}
+        {currentView === "locations" ? <LocationsAndStays workspace={visibleWorkspace} personId={activeOwnerId} mutate={mutate} openTransactions={openTransactions} /> : null}
         {currentView === "recurring" ? <RecurringExpenses workspace={visibleWorkspace} mutate={mutate} openTransactions={openTransactions} /> : null}
         {currentView === "cash" ? <CashWithdrawals workspace={visibleWorkspace} openTransactions={openTransactions} /> : null}
-        {currentView === "files" ? <FilesByMonth workspace={workspace} /> : null}
-        {currentView === "imports" ? <ImportWorkspace people={workspace.people} /> : null}
-        {currentView === "investments" ? <InvestmentsView workspace={workspace} mutate={mutate} /> : null}
-        {currentView === "transfers" ? <TransfersView workspace={workspace} mutate={mutate} /> : null}
-        {currentView === "settings" ? <SettingsView workspace={workspace} mutate={mutate} /> : null}
+        {currentView === "files" ? <FilesByMonth workspace={visibleWorkspace} /> : null}
+        {currentView === "imports" ? <ImportWorkspace key={moneyView} people={workspace.people} defaultOwnerPersonId={activeOwnerId} /> : null}
+        {currentView === "investments" ? <InvestmentsView workspace={visibleWorkspace} ownerPersonId={activeOwnerId} mutate={mutate} /> : null}
+        {currentView === "transfers" ? <TransfersView workspace={visibleWorkspace} mutate={mutate} /> : null}
+        {currentView === "settings" ? <SettingsView workspace={visibleWorkspace} mutate={mutate} /> : null}
       </main>
     </div>
   );
+}
+
+function profileWorkspace(workspace: WorkspaceData, view: MoneyView): WorkspaceData {
+  const visibleTransactions = workspace.transactions.filter((transaction) => {
+    const beneficiary = transaction.beneficiary_scope ?? "personal";
+    const ownerRole = transaction.account_owner?.role;
+    if (view === "shared") return beneficiary === "shared";
+    if (view === "julian") return beneficiary !== "shared" && ownerRole === "partner";
+    return beneficiary !== "shared" && (!ownerRole || ownerRole === "self");
+  });
+  const transactionIds = new Set(visibleTransactions.map((transaction) => transaction.id));
+  const transactionBatchIds = new Set(visibleTransactions.flatMap((transaction) => transaction.import_batch_id ? [transaction.import_batch_id] : []));
+  const personRole = view === "julian" ? "partner" : view === "luciana" ? "self" : null;
+  const personId = personRole ? workspace.people.find((person) => person.role === personRole)?.id ?? null : null;
+  const visibleAccounts = view === "shared"
+    ? workspace.accounts.filter((account) => workspace.imports.some((batch) => batch.account_id === account.id && transactionBatchIds.has(batch.id)))
+    : workspace.accounts.filter((account) => account.owner_person_id ? account.owner_person_id === personId : personRole === "self");
+  const accountIds = new Set(visibleAccounts.map((account) => account.id));
+  const visibleImports = workspace.imports.filter((batch) => transactionBatchIds.has(batch.id) || Boolean(batch.account_id && accountIds.has(batch.account_id)));
+  const evidenceIntersects = (ids: string[] | undefined) => (ids ?? []).some((id) => transactionIds.has(id));
+  const visibleQuestions = workspace.questions.filter((question) => {
+    const ids = [...(question.supporting_transaction_ids ?? []), ...(question.transaction_id ? [question.transaction_id] : [])];
+    return evidenceIntersects(ids);
+  });
+  const visibleLocationPeriods = workspace.locationPeriods.filter((period) => {
+    const evidenceIds = Array.isArray(period.evidence.transactionIds) ? period.evidence.transactionIds.filter((id): id is string => typeof id === "string") : [];
+    if (period.id.startsWith("suggested:")) return evidenceIntersects(evidenceIds);
+    if (view === "shared") return visibleTransactions.some((transaction) => transaction.location_period?.id === period.id);
+    return period.person_id ? period.person_id === personId : personRole === "self";
+  });
+  const investmentBelongs = (account: { owner_person_id?: string | null; owner?: { role: string } | null } | null) => view !== "shared" && (account?.owner_person_id ? account.owner_person_id === personId : account?.owner?.role ? account.owner.role === personRole : personRole === "self");
+  const uncategorized = visibleTransactions.filter((transaction) => transaction.status === "posted" && !transaction.excluded_from_totals && transaction.kind === "expense" && !transaction.category_id).length;
+  const missingFx = visibleTransactions.filter((transaction) => transaction.status === "posted" && !transaction.excluded_from_totals && transaction.kind === "expense" && transaction.currency !== "USD" && !transaction.reporting_value).length;
+  const suggestedQuestions = workspace.suggestedQuestions.filter((question) => evidenceIntersects(question.transactionIds));
+  const unansweredQuestions = visibleQuestions.length + suggestedQuestions.length;
+  const issueCount = uncategorized + missingFx + unansweredQuestions;
+
+  return {
+    ...workspace,
+    accounts: visibleAccounts,
+    transactions: visibleTransactions,
+    imports: visibleImports,
+    questions: visibleQuestions,
+    suggestedQuestions,
+    locationPeriods: visibleLocationPeriods,
+    recurringObligations: workspace.recurringObligations.filter((obligation) => evidenceIntersects(obligation.transaction_ids)),
+    insights: workspace.insights.filter((insight) => evidenceIntersects(insight.transactionIds)),
+    transferChains: workspace.transferChains.filter((chain) => chain.members.some((member) => member.transaction && transactionIds.has(member.transaction.id))),
+    investments: workspace.investments.filter((position) => investmentBelongs(position.account)),
+    investmentTransactions: workspace.investmentTransactions.filter((transaction) => investmentBelongs(transaction.account)),
+    portfolioSnapshots: workspace.portfolioSnapshots.filter((snapshot) => investmentBelongs(snapshot.account)),
+    dataQuality: {
+      ...workspace.dataQuality,
+      score: Math.max(0, Math.round(100 - Math.min(100, issueCount / Math.max(visibleTransactions.length, 1) * 100))),
+      uncategorized,
+      missingFx,
+      unansweredQuestions,
+      uncertainLocations: visibleLocationPeriods.filter((period) => period.status === "suggested").length,
+    },
+  };
 }
 
 function CategoryCreator({ disabled, mutate }: { disabled: boolean; mutate: FinanceMutate }) {
@@ -235,7 +305,7 @@ function TransfersView({ workspace, mutate }: { workspace: WorkspaceData; mutate
   return <section className="mt-7 space-y-4"><div className="flex items-start justify-between gap-4"><p className="max-w-2xl text-sm leading-6 text-[var(--muted)]">Transfers remain visible so the same money is not counted as income or spending twice. They are intentionally secondary to expense analysis.</p><button disabled={!live} onClick={() => void rebuild()} className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-sm font-semibold disabled:opacity-45"><RefreshCw aria-hidden="true" className="size-4" />Rebuild</button></div>{workspace.transferChains.map((chain) => <article key={chain.id} className="rounded-[22px] border border-[var(--line)] bg-[var(--surface)] p-5"><div className="flex flex-wrap items-start justify-between gap-4"><div><StatusBadge value={chain.status} /><h2 className="mt-3 font-semibold">{chain.notes || "Owned-account movement"}</h2><p className="mt-1 text-sm text-[var(--muted)]">{Math.round(Number(chain.confidence) * 100)}% confidence · principal {formatMoney(chain.source_amount, chain.source_currency)} · fees {formatMoney(chain.fee_amount, chain.source_currency)}</p></div>{chain.status === "suggested" ? <div className="flex gap-2"><button disabled={!live} onClick={() => void decide(chain.id, "rejected")} className="rounded-xl border border-[var(--line)] px-3 py-2 text-sm font-semibold disabled:opacity-45">Not a transfer</button><button disabled={!live} onClick={() => void decide(chain.id, "confirmed")} className="rounded-xl bg-[var(--forest)] px-3 py-2 text-sm font-semibold text-white disabled:opacity-45">Confirm</button></div> : null}</div><div className="mt-5 space-y-2">{chain.members.map((member, index) => <div key={`${chain.id}-${member.sequence}`} className="flex items-center gap-3"><span className="grid size-8 shrink-0 place-items-center rounded-full bg-[var(--forest-soft)] text-xs font-bold text-[var(--forest)]">{index + 1}</span><div className="min-w-0 flex-1 rounded-xl bg-[var(--paper)] px-4 py-3"><div className="flex flex-wrap justify-between gap-2"><span className="truncate font-medium">{member.transaction?.account?.name ?? "Account movement"} · {member.transaction?.description ?? "Imported transaction"}</span><span className="font-mono text-sm">{formatMoney(member.allocated_amount ?? member.transaction?.amount, member.allocated_currency ?? member.transaction?.currency)}</span></div></div></div>)}</div></article>)}{!workspace.transferChains.length ? <EmptyPanel icon={Link2} title="No transfer chains yet" body="Import at least two owned accounts, then rebuild suggestions." /> : null}</section>;
 }
 
-function InvestmentsView({ workspace, mutate }: { workspace: WorkspaceData; mutate: FinanceMutate }) {
+function InvestmentsView({ workspace, ownerPersonId, mutate }: { workspace: WorkspaceData; ownerPersonId: string | null; mutate: FinanceMutate }) {
   const live = workspace.mode === "live";
   const latestSnapshot = workspace.portfolioSnapshots[0] ?? null;
   const submit = async (event: FormEvent<HTMLFormElement>) => {
@@ -243,7 +313,7 @@ function InvestmentsView({ workspace, mutate }: { workspace: WorkspaceData; muta
     const form = event.currentTarget;
     const data = new FormData(form);
     try {
-      await mutate("/api/investments", "POST", { recordType: "position", institution: data.get("institution"), accountName: data.get("accountName"), baseCurrency: String(data.get("currency") || "USD").toUpperCase(), cashAvailable: 0, valuationDate: data.get("valuationDate"), assetName: data.get("assetName"), symbol: data.get("symbol") || null, assetType: data.get("assetType"), assetCurrency: String(data.get("currency") || "USD").toUpperCase(), quantity: Number(data.get("quantity") || 0), costBasis: Number(data.get("costBasis") || 0), currentValue: Number(data.get("currentValue") || 0), realizedProfitLoss: 0 });
+      await mutate("/api/investments", "POST", { recordType: "position", ownerPersonId, institution: data.get("institution"), accountName: data.get("accountName"), baseCurrency: String(data.get("currency") || "USD").toUpperCase(), cashAvailable: 0, valuationDate: data.get("valuationDate"), assetName: data.get("assetName"), symbol: data.get("symbol") || null, assetType: data.get("assetType"), assetCurrency: String(data.get("currency") || "USD").toUpperCase(), quantity: Number(data.get("quantity") || 0), costBasis: Number(data.get("costBasis") || 0), currentValue: Number(data.get("currentValue") || 0), realizedProfitLoss: 0 });
       form.reset();
     } catch (error) { window.alert(messageOf(error)); }
   };

@@ -79,7 +79,7 @@ export async function POST(request: Request) {
     } else {
       const { data, error: accountError } = await supabase
         .from("financial_accounts")
-        .upsert({ user_id: user.id, institution, name: preview.summary.accountLabel, currency }, { onConflict: "user_id,institution,name,currency" })
+        .upsert({ user_id: user.id, institution, name: preview.summary.accountLabel, currency, owner_person_id: ownerPersonId }, { onConflict: "user_id,institution,name,currency,owner_person_id" })
         .select("id,coverage_start,coverage_end,last_transaction_at")
         .single();
       if (accountError) throw accountError;
@@ -150,7 +150,7 @@ export async function POST(request: Request) {
 
     if (isInvestmentStatement) {
       if (!preview.investmentStatement) throw new Error("The Alpaca statement was detected, but its holdings could not be parsed safely.");
-      const investmentResult = await persistAlpacaStatement(supabase, user.id, account.id, batchId, preview.investmentStatement);
+      const investmentResult = await persistAlpacaStatement(supabase, user.id, ownerPersonId, account.id, batchId, preview.investmentStatement);
       insertedInvestmentTransactionIds.push(...investmentResult.transactionIds);
     }
 
@@ -293,19 +293,22 @@ export async function POST(request: Request) {
 async function persistAlpacaStatement(
   supabase: Awaited<ReturnType<typeof createClient>>,
   userId: string,
+  ownerPersonId: string | null,
   financialAccountId: string,
   batchId: string,
   statement: InvestmentStatementPreview,
 ) {
-  const accountLookup = await supabase.from("investment_accounts").select("id").eq("user_id", userId).eq("institution", "alpaca").eq("name", statement.accountLabel).maybeSingle();
+  let accountLookupQuery = supabase.from("investment_accounts").select("id").eq("user_id", userId).eq("institution", "alpaca").eq("name", statement.accountLabel);
+  accountLookupQuery = ownerPersonId ? accountLookupQuery.eq("owner_person_id", ownerPersonId) : accountLookupQuery.is("owner_person_id", null);
+  const accountLookup = await accountLookupQuery.maybeSingle();
   if (accountLookup.error) throw accountLookup.error;
   let investmentAccount = accountLookup.data;
   if (!investmentAccount) {
-    const created = await supabase.from("investment_accounts").insert({ user_id: userId, financial_account_id: financialAccountId, institution: "alpaca", name: statement.accountLabel, base_currency: statement.currency, cash_available: statement.cashAvailable }).select("id").single();
+    const created = await supabase.from("investment_accounts").insert({ user_id: userId, owner_person_id: ownerPersonId, financial_account_id: financialAccountId, institution: "alpaca", name: statement.accountLabel, base_currency: statement.currency, cash_available: statement.cashAvailable }).select("id").single();
     if (created.error) throw created.error;
     investmentAccount = created.data;
   } else {
-    const { error } = await supabase.from("investment_accounts").update({ financial_account_id: financialAccountId, base_currency: statement.currency, cash_available: statement.cashAvailable }).eq("id", investmentAccount.id).eq("user_id", userId);
+    const { error } = await supabase.from("investment_accounts").update({ owner_person_id: ownerPersonId, financial_account_id: financialAccountId, base_currency: statement.currency, cash_available: statement.cashAvailable }).eq("id", investmentAccount.id).eq("user_id", userId);
     if (error) throw error;
   }
 

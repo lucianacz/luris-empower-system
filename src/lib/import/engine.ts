@@ -6,6 +6,7 @@ import { BrubankPdfAdapter } from "./adapters/brubank-pdf";
 import { DeelCsvAdapter } from "./adapters/deel-csv";
 import { GenericCsvAdapter } from "./adapters/generic-csv";
 import { PayoneerCsvAdapter } from "./adapters/payoneer-csv";
+import { WiseCsvAdapter } from "./adapters/wise-csv";
 import { parseCsv } from "./csv";
 import { extractPdfLines } from "./pdf";
 import { parseXlsx } from "./xlsx";
@@ -14,6 +15,7 @@ import type { AdapterInput, ColumnMapping, DetectionResult, ImportAdapter, Impor
 const adapters: ImportAdapter[] = [
   new DeelCsvAdapter(),
   new PayoneerCsvAdapter(),
+  new WiseCsvAdapter(),
   new ArqCsvAdapter(),
   new BrubankCsvAdapter(),
   new ArqPdfAdapter(),
@@ -84,10 +86,10 @@ export async function previewFile(file: PreviewFile, options: { provider?: Provi
   const dates = transactions.map((transaction) => transaction.occurredAt).sort();
   const unresolvedRows = transactions.filter((transaction) => transaction.kind === "unknown").length;
   const warningRows = transactions.filter((transaction) => transaction.warnings.length > 0).length;
-  const inferredPeriod = inferStatementPeriod(file.name, chosen.detection.provider);
+  const inferredPeriod = inferStatementPeriod(file.name, chosen.detection.provider, input.pdfLines);
   const currencies = [...new Set(transactions.map((transaction) => transaction.currency))].sort();
-  if (!currencies.length && ["arq", "brubank"].includes(chosen.detection.provider)) currencies.push("ARS");
-  if (!currencies.length && ["deel", "payoneer", "alpaca"].includes(chosen.detection.provider)) currencies.push("USD");
+  if (!currencies.length && chosen.detection.provider === "arq") currencies.push(chosen.detection.variant === "usd-statement" ? "USD" : "ARS");
+  if (!currencies.length && ["deel", "payoneer", "alpaca", "wise"].includes(chosen.detection.provider)) currencies.push("USD");
 
   return {
     fileName: file.name,
@@ -109,12 +111,19 @@ export async function previewFile(file: PreviewFile, options: { provider?: Provi
       dateTo: inferredPeriod?.end ?? dates.at(-1) ?? null,
       accountLabel: investmentStatement?.accountLabel ?? accountLabel(chosen.detection, currencies),
     },
+    ownerHint: inferOwner(input),
     investmentStatement,
   };
 }
 
-function inferStatementPeriod(fileName: string, provider: Provider): { start: string; end: string } | null {
+function inferStatementPeriod(fileName: string, provider: Provider, pdfLines: string[] = []): { start: string; end: string } | null {
   if (provider === "arq") {
+    const text = pdfLines.join(" ");
+    const dates = [...text.matchAll(/\b(\d{1,2}\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+20\d{2})\b/gi)]
+      .map((match) => parseEnglishStatementDate(match[1]))
+      .filter((value): value is string => value !== null)
+      .sort();
+    if (dates.length >= 2) return { start: `${dates[0]}T00:00:00.000Z`, end: `${dates.at(-1)}T23:59:59.999Z` };
     const match = fileName.match(/(20\d{2})-(0[1-9]|1[0-2])/);
     if (match) return monthPeriod(Number(match[1]), Number(match[2]));
   }
@@ -125,6 +134,23 @@ function inferStatementPeriod(fileName: string, provider: Provider): { start: st
     if (year) return { start: `${year[1]}-01-01T00:00:00.000Z`, end: `${year[1]}-12-31T23:59:59.999Z` };
   }
   return null;
+}
+
+function parseEnglishStatementDate(value: string): string | null {
+  const date = new Date(`${value} UTC`);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString().slice(0, 10);
+}
+
+function inferOwner(input: AdapterInput): ImportPreview["ownerHint"] {
+  const preferredCsvValues = (input.csvRows ?? []).slice(0, 100).flatMap((row) => [
+    row["Withdraw Account Holder Name"],
+    row["Created by"],
+    row["Contract Name"],
+  ]).filter(Boolean).join(" ");
+  const documentText = `${preferredCsvValues} ${(input.pdfLines ?? []).join(" ")}`;
+  if (/\bJULIAN(?:\s+AARON)?\s+STIVELMAN\b/i.test(documentText)) return { displayName: "Julian Stivelman", confidence: 0.99, evidence: "Account-holder name in the statement" };
+  if (/\bLUCIANA(?:\s+AARON)?\s+CZIKK\b/i.test(documentText)) return { displayName: "Luciana Czikk", confidence: 0.99, evidence: "Account-holder name in the statement" };
+  return undefined;
 }
 
 function monthPeriod(year: number, month: number) {
@@ -143,6 +169,7 @@ function detectFormat(fileName: string, mimeType: string): SourceFormat {
 function providerLabel(provider: Provider): string {
   if (provider === "arq") return "ARQ";
   if (provider === "alpaca") return "Alpaca";
+  if (provider === "wise") return "Wise";
   return provider.charAt(0).toUpperCase() + provider.slice(1);
 }
 

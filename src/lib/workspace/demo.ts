@@ -17,6 +17,8 @@ export interface WorkspaceAccount {
   coverage_end: string | null;
   coverage_gaps: Array<{ start: string; end: string; days: number }>;
   overlapping_periods: number;
+  owner_person_id?: string | null;
+  owner?: { id: string; display_name: string; role: string } | null;
 }
 
 export interface WorkspaceTransaction {
@@ -79,6 +81,8 @@ export interface WorkspaceLocationPeriod {
   confidence: number;
   explanation: string;
   evidence: Record<string, unknown>;
+  person_id?: string | null;
+  person?: { id: string; display_name: string; role: string } | null;
   location: { id: string; name: string; country_code: string | null; country_name: string | null; default_currency: string | null };
 }
 
@@ -169,7 +173,7 @@ export interface WorkspaceInvestment {
   currency: string;
   valuation_date: string;
   asset: { symbol: string | null; name: string; asset_type: string } | null;
-  account: { name: string } | null;
+  account: { name: string; owner_person_id?: string | null; owner?: { id: string; display_name: string; role: string } | null } | null;
 }
 
 export interface WorkspaceInvestmentTransaction {
@@ -180,7 +184,7 @@ export interface WorkspaceInvestmentTransaction {
   fee_amount: string;
   currency: string;
   asset: { symbol: string | null; name: string } | null;
-  account: { name: string } | null;
+  account: { name: string; owner_person_id?: string | null; owner?: { id: string; display_name: string; role: string } | null } | null;
 }
 
 export interface WorkspacePortfolioSnapshot {
@@ -198,7 +202,7 @@ export interface WorkspacePortfolioSnapshot {
   realized_profit_loss: string;
   unrealized_profit_loss: string;
   currency: string;
-  account: { name: string } | null;
+  account: { name: string; owner_person_id?: string | null; owner?: { id: string; display_name: string; role: string } | null } | null;
 }
 
 export interface WorkspacePerson { id: string; display_name: string; role: "self" | "partner" | "provider" | "other"; notes: string | null }

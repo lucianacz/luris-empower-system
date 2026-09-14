@@ -3,6 +3,7 @@ import { hasSupabaseEnv } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
 
 const common = {
+  ownerPersonId: z.string().uuid().nullable().optional(),
   accountName: z.string().trim().min(1).max(100),
   institution: z.enum(["arq", "alpaca", "other"]),
   baseCurrency: z.string().trim().toUpperCase().regex(/^[A-Z]{3,5}$/),
@@ -21,13 +22,19 @@ export async function POST(request: Request) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return Response.json({ error: "Sign in first." }, { status: 401 });
   const value = input.data;
-  let { data: account } = await supabase.from("investment_accounts").select("id").eq("user_id", user.id).eq("institution", value.institution).eq("name", value.accountName).maybeSingle();
+  if (value.ownerPersonId) {
+    const { data: owner } = await supabase.from("people").select("id").eq("id", value.ownerPersonId).eq("user_id", user.id).maybeSingle();
+    if (!owner) return Response.json({ error: "Choose an investment owner from this workspace." }, { status: 400 });
+  }
+  let accountQuery = supabase.from("investment_accounts").select("id").eq("user_id", user.id).eq("institution", value.institution).eq("name", value.accountName);
+  accountQuery = value.ownerPersonId ? accountQuery.eq("owner_person_id", value.ownerPersonId) : accountQuery.is("owner_person_id", null);
+  let { data: account } = await accountQuery.maybeSingle();
   if (!account) {
-    const created = await supabase.from("investment_accounts").insert({ user_id: user.id, institution: value.institution, name: value.accountName, base_currency: value.baseCurrency, cash_available: value.cashAvailable }).select("id").single();
+    const created = await supabase.from("investment_accounts").insert({ user_id: user.id, owner_person_id: value.ownerPersonId ?? null, institution: value.institution, name: value.accountName, base_currency: value.baseCurrency, cash_available: value.cashAvailable }).select("id").single();
     if (created.error) return Response.json({ error: created.error.message }, { status: 422 });
     account = created.data;
   } else {
-    const { error } = await supabase.from("investment_accounts").update({ base_currency: value.baseCurrency, cash_available: value.cashAvailable }).eq("id", account.id).eq("user_id", user.id);
+    const { error } = await supabase.from("investment_accounts").update({ owner_person_id: value.ownerPersonId ?? null, base_currency: value.baseCurrency, cash_available: value.cashAvailable }).eq("id", account.id).eq("user_id", user.id);
     if (error) return Response.json({ error: error.message }, { status: 422 });
   }
 

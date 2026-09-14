@@ -37,8 +37,7 @@ export class ArqPdfAdapter implements ImportAdapter {
       const warnings: string[] = [];
       if (/pago con tarjeta|pago qr/.test(lowerType)) kind = "expense";
       else if (/retiro/.test(lowerType)) {
-        kind = "transfer";
-        warnings.push("Withdrawal will be matched to another owned account or sent to Questions.");
+        kind = isOwnedAccountParty(description) ? "transfer" : "expense";
       } else if (internalDolarApp) kind = "transfer";
       else if (/recarga|recibido/.test(lowerType)) {
         kind = "unknown";
@@ -79,7 +78,7 @@ function parseDigitalDollarTransactions(lines: string[], year: number): Normaliz
     else if (/recarga a inversiones|cuenta remunerada/.test(lowerType)) kind = "investment_purchase";
     else if (/liquidaci[oó]n cr[eé]dito/.test(lowerType)) kind = "transfer";
     else if (/compra usdc/.test(lowerType) || /venta usdc por ars/.test(lowerType)) kind = "transfer";
-    else if (/venta usdc/.test(lowerType)) kind = /luciana\s+czikk|de una cuenta tuya/i.test(description) ? "transfer" : "expense";
+    else if (/venta usdc/.test(lowerType)) kind = isOwnedAccountParty(description) ? "transfer" : "expense";
     else warnings.push("ARQ digital-dollar transaction type needs review.");
 
     const exchangeRateToUsd = localAmount && !localAmount.isZero() && localCurrency !== "USD" && localCurrency !== "N/A"
@@ -106,6 +105,10 @@ function parseDigitalDollarTransactions(lines: string[], year: number): Normaliz
       warnings,
     })];
   });
+}
+
+function isOwnedAccountParty(value: string) {
+  return /\b(?:luciana(?:\s+aaron)?\s+czikk|julian(?:\s+aaron)?\s+stivelman|account holder|de una cuenta tuya|deel\s+inc\.?|dolarapp|arq)\b/i.test(value);
 }
 
 function normalizeDigitalLines(lines: string[]) {

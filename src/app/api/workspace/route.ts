@@ -18,16 +18,16 @@ export async function GET() {
   if (!user) return Response.json(createEmptyWorkspace("signed-out"));
 
   const [accounts, questions, chains, imports, categories, investments, investmentTransactions, portfolioSnapshots, people, locationPeriods, locationHints, recurringObligations, profile] = await Promise.all([
-    supabase.from("financial_accounts").select("id,institution,name,currency,last_imported_at,last_transaction_at,coverage_start,coverage_end").eq("user_id", user.id).order("name"),
+    supabase.from("financial_accounts").select("id,institution,name,currency,last_imported_at,last_transaction_at,coverage_start,coverage_end,owner_person_id,owner:people!financial_accounts_owner_person_id_fkey(id,display_name,role)").eq("user_id", user.id).order("name"),
     supabase.from("questions").select("id,prompt,question_type,created_at,transaction_id,context,priority,supporting_transaction_ids,group_key").eq("user_id", user.id).eq("status", "open").order("priority", { ascending: false }).order("created_at", { ascending: false }).limit(100),
     supabase.from("transfer_chains").select("id,status,confidence,source_amount,source_currency,fee_amount,notes,transfer_chain_members(sequence,allocated_amount,allocated_currency,transaction:transactions(id,occurred_at,description,amount,currency,kind,status,excluded_from_totals,fee_amount,category_id,account:financial_accounts(name,institution)))").eq("user_id", user.id).order("created_at", { ascending: false }).limit(50),
     supabase.from("import_batches").select("id,account_id,institution,file_name,status,row_count,imported_count,duplicate_count,unresolved_count,coverage_start,coverage_end,confirmed_at,created_at").eq("user_id", user.id).order("created_at", { ascending: false }).limit(250),
     supabase.from("categories").select("id,name,kind,color,icon,parent_id,life_area,is_essential,is_extraordinary").eq("user_id", user.id).eq("is_archived", false).order("name"),
-    supabase.from("investment_positions").select("id,quantity,cost_basis,current_value,realized_profit_loss,unrealized_profit_loss,currency,valuation_date,asset:investment_assets(symbol,name,asset_type),account:investment_accounts(name)").eq("user_id", user.id).order("valuation_date", { ascending: false }),
-    supabase.from("investment_transactions").select("id,occurred_at,transaction_type,gross_amount,fee_amount,currency,asset:investment_assets(symbol,name),account:investment_accounts(name)").eq("user_id", user.id).order("occurred_at", { ascending: false }).limit(500),
-    supabase.from("portfolio_snapshots").select("id,valuation_date,cash_value,positions_value,total_value,contributions,withdrawals,dividends,interest,fees,taxes,realized_profit_loss,unrealized_profit_loss,currency,account:investment_accounts(name)").eq("user_id", user.id).order("valuation_date", { ascending: false }).limit(120),
+    supabase.from("investment_positions").select("id,quantity,cost_basis,current_value,realized_profit_loss,unrealized_profit_loss,currency,valuation_date,asset:investment_assets(symbol,name,asset_type),account:investment_accounts(name,owner_person_id,owner:people!investment_accounts_owner_person_id_fkey(id,display_name,role))").eq("user_id", user.id).order("valuation_date", { ascending: false }),
+    supabase.from("investment_transactions").select("id,occurred_at,transaction_type,gross_amount,fee_amount,currency,asset:investment_assets(symbol,name),account:investment_accounts(name,owner_person_id,owner:people!investment_accounts_owner_person_id_fkey(id,display_name,role))").eq("user_id", user.id).order("occurred_at", { ascending: false }).limit(500),
+    supabase.from("portfolio_snapshots").select("id,valuation_date,cash_value,positions_value,total_value,contributions,withdrawals,dividends,interest,fees,taxes,realized_profit_loss,unrealized_profit_loss,currency,account:investment_accounts(name,owner_person_id,owner:people!investment_accounts_owner_person_id_fkey(id,display_name,role))").eq("user_id", user.id).order("valuation_date", { ascending: false }).limit(120),
     supabase.from("people").select("id,display_name,role,notes").eq("user_id", user.id).order("role").order("display_name"),
-    supabase.from("location_periods").select("id,starts_on,ends_on,status,period_type,trip_purpose,confidence,explanation,evidence,location:locations(id,name,country_code,country_name,default_currency)").eq("user_id", user.id).order("starts_on"),
+    supabase.from("location_periods").select("id,starts_on,ends_on,status,period_type,trip_purpose,confidence,explanation,evidence,person_id,person:people!location_periods_person_id_fkey(id,display_name,role),location:locations(id,name,country_code,country_name,default_currency)").eq("user_id", user.id).order("starts_on"),
     supabase.from("location_currency_hints").select("currency,weight,location:locations(country_code,country_name,name)").eq("user_id", user.id),
     supabase.from("recurring_obligations").select("id,provider_name,merchant_key,frequency,status,country_code,expected_amount,currency,next_expected_on,category:categories(name),recurring_obligation_transactions(transaction_id)").eq("user_id", user.id).order("provider_name"),
     supabase.from("profiles").select("ars_exchange_rate_method").eq("id", user.id).maybeSingle(),
@@ -60,7 +60,7 @@ export async function GET() {
     totals,
     accounts: (accounts.data ?? []).map((account) => {
       const periods = (imports.data ?? []).filter((batch) => batch.account_id === account.id && batch.status === "confirmed" && batch.coverage_start && batch.coverage_end).map((batch) => ({ start: batch.coverage_start as string, end: batch.coverage_end as string }));
-      return { ...account, coverage_gaps: findCoverageGaps(periods), overlapping_periods: countOverlaps(periods) };
+      return { ...account, owner: firstRelation(account.owner), coverage_gaps: findCoverageGaps(periods), overlapping_periods: countOverlaps(periods) };
     }),
     transactions,
     spending: buildSpendingSummary(transactions),
@@ -71,7 +71,7 @@ export async function GET() {
     }),
     imports: (imports.data ?? []).map((batch) => ({ ...batch, duplicate_count: Number(batch.duplicate_count) + (duplicateCountByBatch.get(batch.id) ?? 0) })),
     categories: categories.data ?? [],
-    investments: investments.data ?? [],
+    investments: (investments.data ?? []).map((position) => ({ ...position, asset: firstRelation(position.asset), account: firstRelation(position.account) })),
     investmentTransactions: (investmentTransactions.data ?? []).map((transaction) => ({ ...transaction, asset: firstRelation(transaction.asset), account: firstRelation(transaction.account) })),
     portfolioSnapshots: (portfolioSnapshots.data ?? []).map((snapshot) => ({ ...snapshot, account: firstRelation(snapshot.account) })),
     people: people.data ?? [],
@@ -114,7 +114,7 @@ function normalizeReportingValue(value: Record<string, unknown> | null) {
 }
 
 function normalizeLocationPeriod(value: Record<string, unknown>) {
-  return { ...value, location: firstRelation(value.location) } as unknown as import("@/lib/workspace/demo").WorkspaceLocationPeriod;
+  return { ...value, location: firstRelation(value.location), person: firstRelation(value.person) } as unknown as import("@/lib/workspace/demo").WorkspaceLocationPeriod;
 }
 
 function firstRelation<T>(value: T | T[] | null | undefined): T | null {

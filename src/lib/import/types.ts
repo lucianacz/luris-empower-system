@@ -1,4 +1,4 @@
-export const providers = ["deel", "arq", "brubank", "payoneer", "alpaca", "generic"] as const;
+export const providers = ["deel", "arq", "brubank", "payoneer", "alpaca", "wise", "generic"] as const;
 
 export type Provider = (typeof providers)[number];
 export type SourceFormat = "csv" | "pdf" | "xlsx";
@@ -78,6 +78,7 @@ export interface ImportPreview {
   transactions: NormalizedTransaction[];
   warnings: string[];
   summary: ImportSummary;
+  ownerHint?: { displayName: string; confidence: number; evidence: string };
   investmentStatement?: InvestmentStatementPreview;
 }
 

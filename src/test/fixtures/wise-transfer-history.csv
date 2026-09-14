@@ -1,0 +1,4 @@
+ID,Status,Direction,"Created on","Finished on","Source fee amount","Source fee currency","Target fee amount","Target fee currency","Source name","Source amount (after fees)","Source currency","Target name","Target amount (after fees)","Target currency","Exchange rate",Reference,Batch,"Created by",Category,Note
+TRANSFER-EXAMPLE-1,COMPLETED,OUT,"2026-07-01 12:00:00","2026-07-01 12:01:00",1.25,USD,,,"Example User",100.00,USD,"Example Landlord",100.00,USD,1.0,,,"Example User",General,
+TRANSFER-EXAMPLE-2,COMPLETED,IN,"2026-07-02 12:00:00","2026-07-02 12:01:00",,,,,"Deel, Inc.",250.00,USD,"Account holder",250.00,USD,1.0,,,"Example User",General,"Money added"
+TRANSFER-EXAMPLE-3,CANCELLED,OUT,"2026-07-03 12:00:00","2026-07-03 12:01:00",2.00,USD,,,"Example User",40.00,USD,"Example Shop",40.00,USD,1.0,,,"Example User",General,

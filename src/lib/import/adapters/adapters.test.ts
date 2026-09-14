@@ -7,6 +7,7 @@ import { ArqPdfAdapter } from "./arq-pdf";
 import { BrubankPdfAdapter } from "./brubank-pdf";
 import { DeelCsvAdapter } from "./deel-csv";
 import { PayoneerCsvAdapter } from "./payoneer-csv";
+import { WiseCsvAdapter } from "./wise-csv";
 
 const fixture = (name: string) => readFile(fileURLToPath(new URL(`../../../test/fixtures/${name}`, import.meta.url)), "utf8");
 
@@ -52,6 +53,17 @@ describe("provider adapters", () => {
     expect(transactions.map((transaction) => transaction.kind)).toEqual(["expense", "income", "cash_withdrawal", "fee"]);
     expect(transactions[2].excludedFromTotals).toBe(true);
     expect(transactions[3].status).toBe("failed");
+  });
+
+  it("normalizes Wise expenses, owned-account funding, fees, and cancelled rows", async () => {
+    const parsed = parseCsv(await fixture("wise-transfer-history.csv"));
+    const adapter = new WiseCsvAdapter();
+    const input = { fileName: "transaction-history.csv", format: "csv" as const, headers: parsed.headers, csvRows: parsed.rows };
+    expect(adapter.detect(input)?.variant).toBe("transfer-history");
+    const transactions = adapter.parse(input);
+    expect(transactions[0]).toMatchObject({ kind: "expense", amount: "-101.25", feeAmount: "1.25", excludedFromTotals: false });
+    expect(transactions[1]).toMatchObject({ kind: "transfer", amount: "250", excludedFromTotals: true });
+    expect(transactions[2]).toMatchObject({ status: "failed", excludedFromTotals: true, warnings: [] });
   });
 
   it("parses ARQ statement rows without treating wallet movements as income", async () => {

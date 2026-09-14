@@ -21,7 +21,7 @@ export function ReportingWorkspace({ workspace, loading, openTransactions, openQ
   const categoryComparison = useMemo(() => compareSpendingCategories(report, comparisonReport), [comparisonReport, report]);
   const categoryTabs = useMemo(() => {
     const tabs = report.categories.slice(0, 14);
-    for (const requiredName of ["Friends & social", "Hotels", "Diving & activities"]) {
+    for (const requiredName of ["Therapy", "Friends & social", "Hotels", "Diving & activities"]) {
       if (tabs.some((category) => category.name === requiredName)) continue;
       const category = workspace.categories.find((item) => item.name === requiredName);
       if (category) tabs.push({ id: category.id, name: category.name, color: category.color ?? "#8f8a82", detail: category.life_area, essential: category.is_essential, extraordinary: category.is_extraordinary, amount: 0, transactionIds: [] });

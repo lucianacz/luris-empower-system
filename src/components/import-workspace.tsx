@@ -13,6 +13,7 @@ const providerOptions: Array<{ value: Provider | ""; label: string }> = [
   { value: "brubank", label: "Brubank" },
   { value: "payoneer", label: "Payoneer" },
   { value: "alpaca", label: "Alpaca investments" },
+  { value: "wise", label: "Wise" },
   { value: "generic", label: "Generic statement" },
 ];
 
@@ -30,7 +31,7 @@ const columnRoles: Array<{ key: ColumnRole; label: string; required?: boolean }>
 
 type Stage = "idle" | "previewing" | "preview" | "committing" | "complete" | "error";
 
-export function ImportWorkspace({ people = [] }: { people?: WorkspacePerson[] }) {
+export function ImportWorkspace({ people = [], defaultOwnerPersonId = null }: { people?: WorkspacePerson[]; defaultOwnerPersonId?: string | null }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
   const [fileQueue, setFileQueue] = useState<File[]>([]);
@@ -41,7 +42,7 @@ export function ImportWorkspace({ people = [] }: { people?: WorkspacePerson[] })
   const [stage, setStage] = useState<Stage>("idle");
   const [message, setMessage] = useState("");
   const [dragging, setDragging] = useState(false);
-  const [ownerPersonId, setOwnerPersonId] = useState(() => people.find((person) => person.role === "self")?.id ?? "");
+  const [ownerPersonId, setOwnerPersonId] = useState(() => defaultOwnerPersonId ?? people.find((person) => person.role === "self")?.id ?? "");
 
   const runPreview = useCallback(async (selected: File, overrideProvider = provider, overrideMapping = mapping) => {
     setStage("previewing");
@@ -56,12 +57,14 @@ export function ImportWorkspace({ people = [] }: { people?: WorkspacePerson[] })
       if (!response.ok) throw new Error(result.error || "The statement could not be previewed.");
       setPreview(result);
       setMapping((current) => ({ ...result.suggestedMapping, ...current }));
+      const inferredOwner = people.find((person) => person.display_name.toLocaleLowerCase() === result.ownerHint?.displayName?.toLocaleLowerCase());
+      if (inferredOwner) setOwnerPersonId(inferredOwner.id);
       setStage("preview");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "The statement could not be previewed.");
       setStage("error");
     }
-  }, [mapping, provider]);
+  }, [mapping, people, provider]);
 
   const openFile = (selected: File, index: number) => {
     setQueueIndex(index);
@@ -169,7 +172,7 @@ export function ImportWorkspace({ people = [] }: { people?: WorkspacePerson[] })
                     {providerOptions.map((option) => <option key={option.value || "auto"} value={option.value}>{option.label}</option>)}
                   </select>
                 </label>
-                {people.length ? <label className="block max-w-sm text-sm font-semibold">Account owner<select value={ownerPersonId} onChange={(event) => setOwnerPersonId(event.target.value)} className="mt-2 h-11 w-full rounded-xl border border-[var(--line)] bg-white px-3 font-normal">{people.filter((person) => ["self", "partner"].includes(person.role)).map((person) => <option key={person.id} value={person.id}>{person.display_name}</option>)}</select><span className="mt-1 block text-xs font-normal text-[var(--muted)]">This keeps Luciana, Julian, and shared reporting separate.</span></label> : null}
+                {people.length ? <label className="block max-w-sm text-sm font-semibold">Account owner<select value={ownerPersonId} onChange={(event) => setOwnerPersonId(event.target.value)} className="mt-2 h-11 w-full rounded-xl border border-[var(--line)] bg-white px-3 font-normal">{people.filter((person) => ["self", "partner"].includes(person.role)).map((person) => <option key={person.id} value={person.id}>{person.display_name}</option>)}</select><span className="mt-1 block text-xs font-normal text-[var(--muted)]">{preview?.ownerHint ? `${preview.ownerHint.displayName} detected from the account-holder field. ` : ""}This keeps Luciana, Julian, and shared reporting separate.</span></label> : null}
 
                 {preview?.requiresMapping ? <MappingEditor headers={preview.headers} mapping={mapping} onChange={setMapping} onApply={() => void runPreview(file, provider, mapping)} /> : null}
                 {preview && !preview.requiresMapping ? <PreviewResult preview={preview} /> : null}

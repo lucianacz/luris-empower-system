@@ -15,6 +15,7 @@ export interface KnownMerchantRule {
   recurrenceDenied?: boolean;
   seasonalMonthsPerYear?: number;
   beneficiaryScope?: "personal" | "shared";
+  reimbursementStatus?: "none" | "expected" | "partial" | "settled" | "uncertain";
   amount?: number;
   minAbsAmount?: number;
   currency?: string;
@@ -39,7 +40,7 @@ export function resolvedKnownMerchantKind(rule: KnownMerchantRule | null, amount
 }
 
 export const knownMerchantRules: KnownMerchantRule[] = [
-  { id: "apple-youtube", pattern: /\bapple\.com(?:\/|\s+)bill\b/i, displayName: "YouTube (via Apple)", categoryName: "Subscriptions & software", recurrenceHint: "monthly", recurringStatus: "active", subscription: true, beneficiaryScope: "personal", amount: 9.49, currency: "USD" },
+  { id: "apple-youtube", pattern: /\bapple\.com(?:\/|\s+)bill\b/i, displayName: "YouTube (via Apple)", categoryName: "Subscriptions & software", recurrenceHint: "monthly", recurringStatus: "active", subscription: true, beneficiaryScope: "shared", amount: 9.49, currency: "USD" },
   { id: "apple-icloud", pattern: /\bapple\.com(?:\/|\s+)bill\b/i, displayName: "iCloud (via Apple)", categoryName: "Subscriptions & software", recurrenceHint: "monthly", recurringStatus: "active", subscription: true, beneficiaryScope: "personal", amount: 0.99, currency: "USD", ignoredMissingMonths: ["2025-12"], notes: "Not subscribed in December 2025; resumed afterward." },
   { id: "seven-eleven", pattern: /\b(?:7|seven)[ -]?eleven\b/i, displayName: "7-Eleven", categoryName: "Groceries", beneficiaryScope: "shared" },
   { id: "citymall", pattern: /\bcity\s*mall\b/i, displayName: "Citymall", categoryName: "Groceries", countryCode: "CR", beneficiaryScope: "shared" },
@@ -61,9 +62,11 @@ export const knownMerchantRules: KnownMerchantRule[] = [
   { id: "nely-nardy-vargas-castro", pattern: /\bnely\s+nardy\s+vargas\s+castro\b/i, displayName: "Nely Nardy Vargas Castro", categoryName: "Cleaning", countryCode: "CR", personRole: "Cleaner" },
   { id: "cara-goldberg", pattern: /\bcara\s+goldberg\b/i, displayName: "Casa Costa Rica · Cara Goldberg", categoryName: "Housing", countryCode: "CR", personRole: "Landlord", recurrenceHint: "monthly", recurringStatus: "uncertain", seasonalMonthsPerYear: 6, beneficiaryScope: "shared" },
   { id: "airbnb", pattern: /\bairbnb\b/i, displayName: "Airbnb", categoryName: "Housing", beneficiaryScope: "shared" },
+  { id: "sansa-cash-returned", pattern: /\bsansa\b/i, displayName: "SANSA · returned in cash", categoryName: "Flights", recurrenceDenied: true, beneficiaryScope: "shared", reimbursementStatus: "settled", kind: "transfer", excludedFromTotals: true, notes: "Short-term loan that was returned in cash; retained as a settled reimbursement and excluded from spending." },
+  { id: "el-conejo-cash-returned", pattern: /\b(?:servicentro\s+)?el\s+conejo\b/i, displayName: "El Conejo · returned in cash", categoryName: "Fuel & gas", countryCode: "CR", recurrenceDenied: true, beneficiaryScope: "shared", reimbursementStatus: "settled", kind: "transfer", excludedFromTotals: true, notes: "Short-term loan that was returned in cash; retained as a settled reimbursement and excluded from spending." },
   { id: "fuel-costa-rica", pattern: /\blumicentro\b|\bservicentro\b|\bgas\s+station\b/i, displayName: "Gas station", preserveDisplayName: true, categoryName: "Fuel & gas", countryCode: "CR", beneficiaryScope: "shared" },
-  { id: "casa-hyundai", pattern: /\bla\s+casa\s+del\s+hyundai\b/i, displayName: "La Casa del Hyundai", categoryName: "Car repairs" },
-  { id: "centro-llantero", pattern: /\bcentro\s+llantero\s+del\s+sur\b/i, displayName: "Centro Llantero del Sur", categoryName: "Car repairs", countryCode: "CR" },
+  { id: "casa-hyundai", pattern: /\bla\s+casa\s+del\s+hyundai\b/i, displayName: "La Casa del Hyundai", categoryName: "Car repairs", beneficiaryScope: "shared" },
+  { id: "centro-llantero", pattern: /\bcentro\s+llantero\s+del\s+sur\b/i, displayName: "Centro Llantero del Sur", categoryName: "Car repairs", countryCode: "CR", beneficiaryScope: "shared" },
   { id: "sephora", pattern: /\bsephora\b/i, displayName: "Sephora", categoryName: "Personal care" },
   { id: "enterprise", pattern: /\benterprise\b/i, displayName: "Enterprise", categoryName: "Car rental" },
   { id: "anthropic-claude", pattern: /\banthropic\*?\s*claude\s+sub\b|\bclaude\.ai\s+subscription\b/i, displayName: "Claude", categoryName: "Subscriptions & software", recurrenceHint: "monthly", recurringStatus: "active", subscription: true, beneficiaryScope: "personal", ignoredMissingMonths: ["2026-05", "2026-06"], confirmedPlanChangeOn: "2026-08-25", notes: "Paused before resubscribing in July 2026; latest amount is the normal price after a plan change." },
@@ -82,11 +85,11 @@ export const knownMerchantRules: KnownMerchantRule[] = [
   { id: "private-medical", pattern: /\bccss\s+hospital\b|\bm(?:yong|yeong)dongyebb?eumjooeu[ib]\b/i, displayName: "Private medical care", preserveDisplayName: true, categoryName: "Private health", recurrenceDenied: true, beneficiaryScope: "personal" },
   { id: "asian-personal-care", pattern: /\bsense\s+spa\b|\bkpay\*?t-?nail\b/i, displayName: "Personal care", preserveDisplayName: true, categoryName: "Personal care", recurrenceDenied: true, beneficiaryScope: "personal" },
   { id: "photo-shops", pattern: /\bkitamura\b|\btokyophotolab\b|\bfilming\s+lab\b/i, displayName: "Photography shop", preserveDisplayName: true, categoryName: "Shopping", recurrenceDenied: true, beneficiaryScope: "personal" },
-  { id: "known-airlines", pattern: /\barajet\b|\bhkairweb\b|\bgreater\s+bay\b|\bflyscoot\b|\bjin\s+air\b|\bviva\s*aerob\b|\btransp\s+volaris\b|\bcard\s+charge\s+\(united\d+\)|\bcard\s+charge\s+\(indigo\s+ai\)/i, displayName: "Airline", preserveDisplayName: true, categoryName: "Flights", recurrenceDenied: true, beneficiaryScope: "personal" },
-  { id: "localiza", pattern: /^localiza$/i, displayName: "Localiza", categoryName: "Car rental", recurrenceDenied: true, beneficiaryScope: "personal" },
+  { id: "known-airlines", pattern: /\barajet\b|\bhkairweb\b|\bgreater\s+bay\b|\bflyscoot\b|\bjin\s+air\b|\bviva\s*aerob\b|\btransp\s+volaris\b|\bcard\s+charge\s+\(united\d+\)|\bcard\s+charge\s+\(indigo\s+ai\)/i, displayName: "Airline", preserveDisplayName: true, categoryName: "Flights", recurrenceDenied: true, beneficiaryScope: "shared" },
+  { id: "localiza", pattern: /^localiza$/i, displayName: "Localiza", categoryName: "Car rental", recurrenceDenied: true, beneficiaryScope: "shared" },
   { id: "antares-dhangethi", pattern: /\bantares\s+dhangethi\b/i, displayName: "Antares Dhangethi", categoryName: "Hotels", countryCode: "MV", recurrenceDenied: true, beneficiaryScope: "personal" },
-  { id: "hispano-mexicano-buceo", pattern: /\bhispano\s+mexicano\s+de\s+bu\b/i, displayName: "Hispano Mexicano de Buceo", categoryName: "Diving & activities", countryCode: "MX", recurrenceDenied: true, beneficiaryScope: "personal" },
-  { id: "surf-shops", pattern: /\bsea\s+kings\s+surf\s+sh\b/i, displayName: "Sea Kings Surf Shop", categoryName: "Diving & activities", recurrenceDenied: true, beneficiaryScope: "personal" },
+  { id: "hispano-mexicano-buceo", pattern: /\bhispano\s+mexicano\s+de\s+bu\b/i, displayName: "Hispano Mexicano de Buceo", categoryName: "Diving & activities", countryCode: "MX", recurrenceDenied: true, beneficiaryScope: "shared" },
+  { id: "surf-shops", pattern: /\bsea\s+kings\s+surf\s+sh\b/i, displayName: "Sea Kings Surf Shop", categoryName: "Diving & activities", recurrenceDenied: true, beneficiaryScope: "shared" },
   { id: "express-vpn", pattern: /\bexpressvpn\.com\b/i, displayName: "ExpressVPN", categoryName: "Subscriptions & software", recurrenceHint: "annual", recurringStatus: "active", subscription: true, beneficiaryScope: "personal" },
   { id: "replicate-software", pattern: /\breplicate\b/i, displayName: "Replicate", categoryName: "Subscriptions & software", recurrenceDenied: true, beneficiaryScope: "personal" },
   { id: "indonesia-visa-arrival", pattern: /\bprismalink\*?ind\s+visaarr\b/i, displayName: "Indonesia visa on arrival", categoryName: "Visas", countryCode: "ID", recurrenceDenied: true, beneficiaryScope: "personal" },

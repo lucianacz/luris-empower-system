@@ -18,6 +18,8 @@ export async function rebuildSpendingIntelligence(supabase: SupabaseClient, user
   await applySpecificCategoryRefinements(supabase, userId, transactions, categoryIds);
   await applyDefaultCategorySuggestions(supabase, userId, transactions, categoryIds);
   await applyHospitalAlemanRule(supabase, userId, transactions, categoryIds.get("Health insurance") ?? null);
+  await applyHouseholdRules(supabase, userId, transactions);
+  const automaticallyDismissedQuestions = await dismissUnnecessaryQuestions(supabase, userId, transactions);
   const estimatedReportingValueCount = await backfillEstimatedReportingValues(supabase, userId);
   const analysis = analyzeRecurring(uniqueByFingerprint(transactions), currentFinanceDate());
   let obligationCount = 0;
@@ -77,7 +79,7 @@ export async function rebuildSpendingIntelligence(supabase: SupabaseClient, user
     const { error } = await supabase.from("insights").upsert({ user_id: userId, insight_key: insight.key, insight_type: "spending", title: insight.title, body: insight.body, priority: insight.priority, transaction_ids: insight.transactionIds, metadata: {} }, { onConflict: "user_id,insight_key" });
     if (error) throw error;
   }
-  return { obligationCount, questionCount, insightCount: analysis.insights.length, estimatedReportingValueCount };
+  return { obligationCount, questionCount, insightCount: analysis.insights.length, estimatedReportingValueCount, automaticallyDismissedQuestions };
 }
 
 async function applyDefaultCategorySuggestions(supabase: SupabaseClient, userId: string, transactions: WorkspaceTransaction[], categoryIds: Map<string, string>) {
@@ -140,6 +142,7 @@ async function applyKnownMerchantRules(supabase: SupabaseClient, userId: string,
         ...(rule.kind ? { kind: rule.kind } : {}),
         ...(rule.excludedFromTotals !== undefined ? { excluded_from_totals: rule.excludedFromTotals } : {}),
         ...(rule.beneficiaryScope ? { beneficiary_scope: rule.beneficiaryScope } : {}),
+        ...(rule.reimbursementStatus ? { reimbursement_status: rule.reimbursementStatus } : {}),
       };
       for (let index = 0; index < merchantTransactions.length; index += 500) {
         const { error } = await supabase.from("transactions").update(update).eq("user_id", userId).in("id", merchantTransactions.slice(index, index + 500).map((transaction) => transaction.id));
@@ -154,6 +157,7 @@ async function applyKnownMerchantRules(supabase: SupabaseClient, userId: string,
         transaction.merchant_key = merchantKey;
         if (rule.countryCode) transaction.merchant_country = rule.countryCode;
         if (rule.beneficiaryScope) transaction.beneficiary_scope = rule.beneficiaryScope;
+        if (rule.reimbursementStatus) transaction.reimbursement_status = rule.reimbursementStatus;
         transaction.kind = resolvedKnownMerchantKind(rule, transaction.amount, transaction.kind as TransactionKind);
         if (rule.excludedFromTotals !== undefined) transaction.excluded_from_totals = rule.excludedFromTotals;
       }
@@ -203,6 +207,62 @@ async function applySpecificCategoryRefinements(supabase: SupabaseClient, userId
     if (error) throw error;
     for (const transaction of airbnb) transaction.merchant_country = null;
   }
+}
+
+async function applyHouseholdRules(supabase: SupabaseClient, userId: string, transactions: WorkspaceTransaction[]) {
+  const sharedTravelAndCar = new Set(["Flights", "Diving & activities", "Hotels", "Car", "Car rental", "Car repairs", "Fuel & gas", "Parking", "Tolls & highways"]);
+  const sharedIds: string[] = [];
+  const personalCanadaIds: string[] = [];
+
+  for (const transaction of transactions) {
+    if (transaction.status !== "posted" || transaction.excluded_from_totals || transaction.kind !== "expense") continue;
+    const categoryName = transaction.category?.name ?? null;
+    const country = transaction.location_period?.location.country_code ?? transaction.merchant_country ?? null;
+    const travelDestination = transaction.travel_destination?.toUpperCase() ?? null;
+    const isCanadaTravel = country === "CA" || travelDestination === "CA";
+    const isTravelOrCar = sharedTravelAndCar.has(categoryName ?? "");
+    const isMexico = country === "MX";
+    const isCostaRicaRestaurant = country === "CR" && categoryName === "Dining out";
+    const isYouTube = /youtube\s*\(via apple\)|apple\.com(?:\/|\s+)bill/i.test(`${transaction.merchant_name ?? ""} ${transaction.description}`) && Math.abs(Number(transaction.amount)) === 9.49;
+
+    if (isTravelOrCar && isCanadaTravel) personalCanadaIds.push(transaction.id);
+    else if (isTravelOrCar || isMexico || isCostaRicaRestaurant || isYouTube) sharedIds.push(transaction.id);
+  }
+
+  for (let index = 0; index < sharedIds.length; index += 500) {
+    const ids = sharedIds.slice(index, index + 500);
+    const { error } = await supabase.from("transactions").update({ beneficiary_scope: "shared" }).eq("user_id", userId).in("id", ids);
+    if (error) throw error;
+  }
+  for (let index = 0; index < personalCanadaIds.length; index += 500) {
+    const ids = personalCanadaIds.slice(index, index + 500);
+    const { error } = await supabase.from("transactions").update({ beneficiary_scope: "personal" }).eq("user_id", userId).in("id", ids);
+    if (error) throw error;
+  }
+  const sharedSet = new Set(sharedIds);
+  const personalSet = new Set(personalCanadaIds);
+  for (const transaction of transactions) {
+    if (sharedSet.has(transaction.id)) transaction.beneficiary_scope = "shared";
+    if (personalSet.has(transaction.id)) transaction.beneficiary_scope = "personal";
+  }
+}
+
+async function dismissUnnecessaryQuestions(supabase: SupabaseClient, userId: string, transactions: WorkspaceTransaction[]) {
+  const { data, error } = await supabase.from("questions").select("id,question_type,transaction_id,supporting_transaction_ids").eq("user_id", userId).eq("status", "open").in("question_type", ["classification", "import_warning"]);
+  if (error) throw error;
+  const byId = new Map(transactions.map((transaction) => [transaction.id, transaction]));
+  const ids = (data ?? []).filter((question) => {
+    const transactionIds = [...new Set([question.transaction_id, ...(question.supporting_transaction_ids ?? [])].filter((id): id is string => typeof id === "string"))];
+    const related = transactionIds.map((id) => byId.get(id)).filter((transaction): transaction is WorkspaceTransaction => Boolean(transaction));
+    if (!related.length) return true;
+    return related.every((transaction) => transaction.status !== "posted" || transaction.excluded_from_totals || transaction.kind === "transfer" || Boolean(transaction.category_id));
+  }).map((question) => question.id);
+
+  for (let index = 0; index < ids.length; index += 500) {
+    const { error: updateError } = await supabase.from("questions").update({ status: "dismissed", resolution: { automatic: true, reason: "The linked transaction is now classified, excluded, failed, reversed, or an internal movement." }, resolved_at: new Date().toISOString() }).eq("user_id", userId).in("id", ids.slice(index, index + 500));
+    if (updateError) throw updateError;
+  }
+  return ids.length;
 }
 
 function categoryFor(name: string): WorkspaceTransaction["category"] {
@@ -265,7 +325,7 @@ async function applyHospitalAlemanRule(supabase: SupabaseClient, userId: string,
 async function loadTransactions(supabase: SupabaseClient, userId: string) {
   const transactions: WorkspaceTransaction[] = [];
   for (let from = 0; ; from += 1000) {
-    const { data, error } = await supabase.from("transactions").select("id,fingerprint,occurred_at,description,amount,currency,kind,status,excluded_from_totals,fee_amount,category_id,merchant_name,merchant_key,merchant_country,metadata,category:categories(name,life_area,is_essential,is_extraordinary,color)").eq("user_id", userId).order("occurred_at").range(from, from + 999);
+    const { data, error } = await supabase.from("transactions").select("id,fingerprint,occurred_at,description,amount,currency,kind,status,excluded_from_totals,fee_amount,category_id,merchant_name,merchant_key,merchant_country,travel_destination,beneficiary_scope,reimbursement_status,metadata,category:categories(name,life_area,is_essential,is_extraordinary,color),account_owner:people!transactions_account_owner_id_fkey(id,display_name,role),location_period:location_periods(id,starts_on,ends_on,status,period_type,trip_purpose,confidence,explanation,evidence,location:locations(id,name,country_code,country_name,default_currency))").eq("user_id", userId).order("occurred_at").range(from, from + 999);
     if (error) throw error;
     transactions.push(...(data ?? []).map((row) => ({ ...row, category: first(row.category), account: null } as unknown as WorkspaceTransaction)));
     if (!data || data.length < 1000) break;
