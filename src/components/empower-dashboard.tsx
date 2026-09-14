@@ -15,7 +15,6 @@ import {
   RefreshCw,
   Repeat2,
   Settings2,
-  ShieldCheck,
   Sparkles,
   TrendingUp,
   Trash2,
@@ -199,10 +198,6 @@ export function EmpowerDashboard() {
           <NavItem icon={Link2} label="Transfer chains" active={currentView === "transfers"} onSelect={() => navigate("transfers")} />
         </nav>
         <div className="mt-auto space-y-2">
-          <button onClick={() => navigate("questions")} className="w-full rounded-2xl border border-[var(--line)] bg-[var(--paper)] p-3.5 text-left">
-            <span className="flex items-center gap-2 text-xs font-semibold"><ShieldCheck aria-hidden="true" className="size-4 text-[var(--forest)]" />Data quality {visibleWorkspace.dataQuality.score}%</span>
-            <span className="mt-2 block text-xs leading-5 text-[var(--muted)]">{visibleWorkspace.dataQuality.uncategorized} uncategorized · {visibleWorkspace.dataQuality.missingFx} missing USD rates</span>
-          </button>
           <NavItem icon={Settings2} label="Settings" active={currentView === "settings"} onSelect={() => navigate("settings")} />
         </div>
       </aside>
@@ -217,7 +212,7 @@ export function EmpowerDashboard() {
           <button onClick={() => navigate("imports")} className="inline-flex h-11 items-center gap-2 rounded-xl bg-[var(--forest)] px-4 text-sm font-semibold text-white shadow-[0_8px_22px_rgba(33,78,69,0.18)]"><FileUp aria-hidden="true" className="size-4" /><span className="hidden sm:inline">Import statements</span><span className="sm:hidden">Import</span></button>
         </header>
         {notice ? <div role="status" className="mt-5 flex items-center justify-between gap-3 rounded-xl border border-[var(--line)] bg-[var(--surface)] px-4 py-3 text-sm"><span>{notice}</span><button aria-label="Dismiss message" onClick={() => setNotice("")}><X aria-hidden="true" className="size-4" /></button></div> : null}
-        {currentView === "spending" ? <ReportingWorkspace workspace={visibleWorkspace} moneyView={moneyView} loading={loading} openTransactions={openTransactions} openQuestions={() => navigate("questions")} openLocations={() => navigate("locations")} /> : null}
+        {currentView === "spending" ? <ReportingWorkspace workspace={visibleWorkspace} moneyView={moneyView} openTransactions={openTransactions} openLocations={() => navigate("locations")} /> : null}
         {currentView === "income" ? <IncomeSavings workspace={moneyView === "shared" ? workspace : visibleWorkspace} combinedHousehold={moneyView === "shared"} openTransactions={openTransactions} /> : null}
         {currentView === "property" ? <PropertyProject workspace={visibleWorkspace} profile={moneyView} openTransactions={openTransactions} /> : null}
         {currentView === "transactions" ? <><TransactionLedger workspace={transactionWorkspace} mutate={mutate} selection={selection} clearSelection={() => setSelection(null)} /><CategoryCreator disabled={workspace.mode !== "live"} mutate={mutate} /></> : null}

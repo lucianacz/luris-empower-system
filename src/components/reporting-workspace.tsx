@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, ArrowLeftRight, ArrowUpRight, CalendarDays, CircleDollarSign, MapPin, ReceiptText, Sparkles } from "lucide-react";
+import { AlertTriangle, ArrowLeftRight, CircleDollarSign, MapPin } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { OpenTransactions } from "@/components/finance-ui-types";
 import type { MoneyView } from "@/components/empower-dashboard";
@@ -10,7 +10,7 @@ import { buildSpendingReport, type SpendingGroup, type SpendingReport, type Trac
 import { previousComparableRange, rangeForMonth, rangeForPreset, rangeLabel, type DatePreset, type DateRange } from "@/lib/reporting/periods";
 import type { WorkspaceData, WorkspaceTransaction } from "@/lib/workspace/demo";
 
-export function ReportingWorkspace({ workspace, moneyView, loading, openTransactions, openQuestions, openLocations }: { workspace: WorkspaceData; moneyView: MoneyView; loading: boolean; openTransactions: OpenTransactions; openQuestions: () => void; openLocations: () => void }) {
+export function ReportingWorkspace({ workspace, moneyView, openTransactions, openLocations }: { workspace: WorkspaceData; moneyView: MoneyView; openTransactions: OpenTransactions; openLocations: () => void }) {
   const today = workspace.asOfDate;
   const availableMonths = useMemo(() => [...new Set(workspace.transactions.map((transaction) => transaction.occurred_at.slice(0, 7)))].sort().reverse(), [workspace.transactions]);
   const firstRecordDate = useMemo(() => workspace.transactions.reduce((first, transaction) => transaction.occurred_at.slice(0, 10) < first ? transaction.occurred_at.slice(0, 10) : first, today), [today, workspace.transactions]);
@@ -93,27 +93,22 @@ export function ReportingWorkspace({ workspace, moneyView, loading, openTransact
 
     <article className="rounded-[22px] border border-[var(--forest)] bg-[linear-gradient(135deg,var(--forest-soft),var(--surface)_58%)] p-5">
       <div className="flex flex-wrap items-end justify-between gap-2"><div><p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--forest)]">Financial profile overview</p><h2 className="mt-1 text-xl font-semibold">{profileName(moneyView)}</h2></div><p className="text-xs text-[var(--muted)]">USD · {rangeLabel(profileReport.range)} · click any number for its transactions</p></div>
-      <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
         {moneyView === "shared" ? <>
           <OverviewMetric label="Household spending" amount={profileReport.total} onClick={() => openTransactions({ title: "Shared household spending", transactionIds: profileReport.total.transactionIds, range: profileReport.range })} />
           <OverviewMetric label="Paid by Luciana" amount={lucianaPaidReport.total} onClick={() => openTransactions({ title: "Shared spending paid by Luciana", transactionIds: lucianaPaidReport.total.transactionIds, range: profileReport.range })} />
           <OverviewMetric label="Paid by Julian" amount={julianPaidReport.total} onClick={() => openTransactions({ title: "Shared spending paid by Julian", transactionIds: julianPaidReport.total.transactionIds, range: profileReport.range })} />
           <OverviewMetric label="Shared flights" amount={sharedFlights} onClick={() => openTransactions({ title: "Shared flights", transactionIds: sharedFlights.transactionIds, range: profileReport.range })} />
+          <OverviewMetric label="Average / completed month" amount={profileReport.completedAverage} note={`${profileReport.completedAverage.monthCount} completed months`} onClick={() => openTransactions({ title: "Shared spending in completed months", transactionIds: profileReport.completedAverage.transactionIds, range: profileReport.range })} />
         </> : <>
           <OverviewMetric label={`Paid by ${moneyView === "luciana" ? "Luciana" : "Julian"}`} amount={profileReport.total} onClick={() => openTransactions({ title: "All spending paid from this profile", transactionIds: profileReport.total.transactionIds, range: profileReport.range })} />
           <OverviewMetric label="Personal use" amount={profileReport.personal} onClick={() => openTransactions({ title: "Personal spending", transactionIds: profileReport.personal.transactionIds, range: profileReport.range })} />
           <OverviewMetric label="Shared household paid" amount={profileReport.household} onClick={() => openTransactions({ title: "Shared household spending paid from this profile", transactionIds: profileReport.household.transactionIds, range: profileReport.range })} />
           <OverviewMetric label="Income received" amount={incomeReceived} onClick={() => openTransactions({ title: "Income received by this profile", transactionIds: incomeReceived.transactionIds, range: profileReport.range })} />
+          <OverviewMetric label="Average / completed month" amount={profileReport.completedAverage} note={`${profileReport.completedAverage.monthCount} completed months`} onClick={() => openTransactions({ title: "Spending in completed months", transactionIds: profileReport.completedAverage.transactionIds, range: profileReport.range })} />
         </>}
       </div>
     </article>
-
-    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-      <MetricButton label="Spending" value={loading ? "Loading…" : money(report.total.amount)} note={`${rangeLabel(report.range)} · ${report.total.transactionIds.length} transactions`} icon={ArrowUpRight} tone="amber" onClick={() => open("Spending", report.total)} />
-      <MetricButton label="Average per completed month" value={money(report.completedAverage.amount)} note={`${report.completedAverage.monthCount} complete month${report.completedAverage.monthCount === 1 ? "" : "s"}; current month excluded`} icon={CalendarDays} tone="green" onClick={() => open("Transactions in completed months", report.completedAverage)} />
-      <MetricButton label="Current partial month" value={money(report.currentPartial.amount)} note={`${formatMonth(report.currentPartial.month)} through ${today} · ${report.currentPartial.transactionIds.length} transactions`} icon={ReceiptText} tone="plain" onClick={() => open("Current partial month", report.currentPartial)} />
-      <MetricButton label="Data quality" value={`${workspace.dataQuality.score}%`} note={`${workspace.dataQuality.uncategorized + workspace.dataQuality.unansweredQuestions + report.missingFxTransactionIds.length} items need review`} icon={Sparkles} tone="plain" onClick={openQuestions} />
-    </div>
 
     {comparisonEnabled ? <PeriodComparison selected={report} comparison={comparisonReport} rows={categoryComparison} openTransactions={openTransactions} /> : null}
 
@@ -208,8 +203,7 @@ function incomeInRange(transactions: WorkspaceTransaction[], range: DateRange): 
   };
 }
 function profileName(view: MoneyView) { return view === "luciana" ? "Luciana" : view === "julian" ? "Julian" : "Shared household"; }
-function OverviewMetric({ label, amount, onClick }: { label: string; amount: TraceableAmount; onClick: () => void }) { return <button onClick={onClick} className="rounded-xl border border-white/80 bg-white/80 p-3 text-left shadow-sm transition hover:border-[var(--forest)]"><span className="block text-[11px] font-medium text-[var(--muted)]">{label}</span><strong className="mt-1 block font-mono text-lg">{money(amount.amount)}</strong><span className="mt-1 block text-[10px] text-[var(--muted)]">{amount.transactionIds.length} transaction{amount.transactionIds.length === 1 ? "" : "s"}</span></button>; }
-function MetricButton({ label, value, note, icon: Icon, tone, onClick }: { label: string; value: string; note: string; icon: typeof ArrowUpRight; tone: "green" | "amber" | "plain"; onClick: () => void }) { const color = tone === "green" ? "bg-[var(--forest-soft)] text-[var(--forest)]" : tone === "amber" ? "bg-[var(--amber-soft)] text-[var(--amber)]" : "bg-[var(--paper-deep)] text-[var(--muted)]"; return <button onClick={onClick} className="rounded-[20px] border border-[var(--line)] bg-[var(--surface)] p-5 text-left shadow-[0_12px_34px_rgba(37,45,42,0.04)] transition hover:-translate-y-0.5 hover:border-[var(--forest)]"><span className="flex items-center justify-between gap-3"><span className="text-sm font-medium text-[var(--muted)]">{label}</span><span className={`grid size-8 place-items-center rounded-xl ${color}`}><Icon aria-hidden="true" className="size-4" /></span></span><strong className="mt-4 block text-2xl tracking-[-0.04em]">{value}</strong><span className="mt-1 block text-xs leading-5 text-[var(--muted)]">{note}</span></button>; }
+function OverviewMetric({ label, amount, note, onClick }: { label: string; amount: TraceableAmount; note?: string; onClick: () => void }) { return <button onClick={onClick} className="rounded-xl border border-white/80 bg-white/80 p-3 text-left shadow-sm transition hover:border-[var(--forest)]"><span className="block text-[11px] font-medium text-[var(--muted)]">{label}</span><strong className="mt-1 block font-mono text-lg">{money(amount.amount)}</strong><span className="mt-1 block text-[10px] text-[var(--muted)]">{note ?? `${amount.transactionIds.length} transaction${amount.transactionIds.length === 1 ? "" : "s"}`}</span></button>; }
 function SplitCard({ title, left, right, range, openTransactions }: { title: string; left: TraceableAmount & { label: string }; right: TraceableAmount & { label: string }; range: DateRange; openTransactions: OpenTransactions }) { return <article className="rounded-[22px] border border-[var(--line)] bg-[var(--surface)] p-5"><h2 className="font-semibold">{title}</h2><div className="mt-4 grid grid-cols-2 gap-3">{[left, right].map((item) => <button key={item.label} onClick={() => openTransactions({ title: item.label, transactionIds: item.transactionIds, range })} className="rounded-xl bg-[var(--paper)] p-3 text-left"><span className="text-xs text-[var(--muted)]">{item.label}</span><strong className="mt-1 block text-sm">{money(item.amount)}</strong><span className="mt-1 block text-[10px] text-[var(--muted)]">{item.transactionIds.length} transactions</span></button>)}</div></article>; }
 function LocationComparison({ group, workspace, range, today, openTransactions }: { group: SpendingGroup; workspace: WorkspaceData; range: DateRange; today: string; openTransactions: OpenTransactions }) {
   const period = workspace.locationPeriods.find((item) => item.id === group.id);
