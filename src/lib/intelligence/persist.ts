@@ -20,6 +20,7 @@ export async function rebuildSpendingIntelligence(supabase: SupabaseClient, user
   await applySpecificCategoryRefinements(supabase, userId, transactions, categoryIds);
   await applyDefaultCategorySuggestions(supabase, userId, transactions, categoryIds);
   await clearLocationIndependentAttribution(supabase, userId, transactions);
+  await clearFixedLocationMismatchAttribution(supabase, userId, transactions);
   await applyHospitalAlemanRule(supabase, userId, transactions, categoryIds.get("Health insurance") ?? null);
   await applyConfirmedFundingAttributions(supabase, userId, transactions);
   await applyHouseholdRules(supabase, userId, transactions);
@@ -119,6 +120,30 @@ async function applyCountryOverrides(supabase: SupabaseClient, userId: string, t
   for (const transaction of transactions) {
     if (transaction.merchant_country) transaction.merchant_country = normalizeUserCountryHint(transaction.merchant_country);
   }
+  const lucianaBrazilIds = transactions.filter((transaction) => transaction.account_owner?.role === "self" && (
+    transaction.merchant_country === "BR"
+    || transaction.original_currency?.toUpperCase() === "BRL"
+    || transaction.currency.toUpperCase() === "BRL"
+    || transaction.travel_destination?.toUpperCase() === "BR"
+  )).map((transaction) => transaction.id);
+  for (let index = 0; index < lucianaBrazilIds.length; index += 500) {
+    const { error } = await supabase.from("transactions").update({ merchant_country: "AR", travel_destination: null, travel_date: null }).eq("user_id", userId).in("id", lucianaBrazilIds.slice(index, index + 500));
+    if (error) throw error;
+  }
+  const lucianaBrazilSet = new Set(lucianaBrazilIds);
+  for (const transaction of transactions) {
+    if (!lucianaBrazilSet.has(transaction.id)) continue;
+    transaction.merchant_country = "AR";
+    transaction.travel_destination = null;
+    transaction.travel_date = null;
+  }
+  const brazilPeriodIds = transactions.filter((transaction) => lucianaBrazilSet.has(transaction.id) && transaction.location_period?.location.country_code === "BR").map((transaction) => transaction.id);
+  for (let index = 0; index < brazilPeriodIds.length; index += 500) {
+    const { error } = await supabase.from("transactions").update({ location_period_id: null }).eq("user_id", userId).in("id", brazilPeriodIds.slice(index, index + 500));
+    if (error) throw error;
+  }
+  const brazilPeriodSet = new Set(brazilPeriodIds);
+  for (const transaction of transactions) if (brazilPeriodSet.has(transaction.id)) transaction.location_period = null;
 }
 
 async function applyKnownMerchantRules(supabase: SupabaseClient, userId: string, transactions: WorkspaceTransaction[], categoryIds: Map<string, string>) {
@@ -352,6 +377,19 @@ async function clearLocationIndependentAttribution(supabase: SupabaseClient, use
     transaction.travel_date = null;
     transaction.merchant_country = null;
   }
+}
+
+async function clearFixedLocationMismatchAttribution(supabase: SupabaseClient, userId: string, transactions: WorkspaceTransaction[]) {
+  const fixedLocationCategories = new Set(["Housing", "Cleaning", "Bills & utilities"]);
+  const related = transactions.filter((transaction) => fixedLocationCategories.has(transaction.category?.name ?? "")
+    && Boolean(transaction.merchant_country)
+    && Boolean(transaction.location_period?.location.country_code)
+    && transaction.merchant_country !== transaction.location_period?.location.country_code);
+  for (let index = 0; index < related.length; index += 500) {
+    const { error } = await supabase.from("transactions").update({ location_period_id: null }).eq("user_id", userId).in("id", related.slice(index, index + 500).map((transaction) => transaction.id));
+    if (error) throw error;
+  }
+  for (const transaction of related) transaction.location_period = null;
 }
 
 async function applyHouseholdRules(supabase: SupabaseClient, userId: string, transactions: WorkspaceTransaction[]) {

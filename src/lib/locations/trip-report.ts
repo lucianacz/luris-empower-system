@@ -33,11 +33,20 @@ export function isSharedTripGroup(periods: WorkspaceLocationPeriod[]) {
 export function transactionIdsForLocationPeriod(period: WorkspaceLocationPeriod, transactions: WorkspaceTransaction[], asOfDate: string, equivalentPeriodIds: Iterable<string> = [period.id]) {
   const periodIds = new Set(equivalentPeriodIds);
   return transactions.filter((transaction) => {
-    if (isLocationIndependentCategory(effectiveCategoryName(transaction))) return false;
+    const categoryName = effectiveCategoryName(transaction);
+    if (isLocationIndependentCategory(categoryName)) return false;
+    if (isFixedLocationExpenseElsewhere(transaction, period, categoryName)) return false;
     if (transaction.location_period?.id && periodIds.has(transaction.location_period.id)) return true;
     if (!transaction.travel_date || !destinationMatchesPeriod(transaction.travel_destination, period)) return false;
     return transaction.travel_date >= period.starts_on && transaction.travel_date <= (period.ends_on || asOfDate);
   }).map((transaction) => transaction.id);
+}
+
+function isFixedLocationExpenseElsewhere(transaction: WorkspaceTransaction, period: WorkspaceLocationPeriod, categoryName: string | null) {
+  if (!["Housing", "Cleaning", "Bills & utilities"].includes(categoryName ?? "")) return false;
+  const expenseCountry = transaction.merchant_country?.toUpperCase();
+  const tripCountry = period.location.country_code?.toUpperCase();
+  return Boolean(expenseCountry && tripCountry && expenseCountry !== tripCountry);
 }
 
 export function buildTripExpenseReport(period: WorkspaceLocationPeriod, transactions: WorkspaceTransaction[], asOfDate: string, equivalentPeriodIds: Iterable<string> = [period.id]): TripExpenseReport {

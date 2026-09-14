@@ -16,6 +16,7 @@ import {
   Repeat2,
   Settings2,
   Sparkles,
+  Target,
   TrendingUp,
   Trash2,
   Users,
@@ -33,18 +34,20 @@ import { QuestionsInbox } from "@/components/questions-inbox";
 import { PropertyProject } from "@/components/property-project";
 import { RecurringExpenses } from "@/components/recurring-expenses";
 import { ReportingWorkspace } from "@/components/reporting-workspace";
+import { SavingsPlan } from "@/components/savings-plan";
 import { TransactionLedger } from "@/components/transaction-ledger";
 import { SYSTEM_START_DATE } from "@/lib/reporting/periods";
 import { createEmptyWorkspace, type WorkspaceData } from "@/lib/workspace/demo";
 
-type View = "spending" | "income" | "property" | "transactions" | "questions" | "locations" | "recurring" | "cash" | "files" | "imports" | "investments" | "transfers" | "settings";
+type View = "spending" | "income" | "savings" | "property" | "transactions" | "questions" | "locations" | "recurring" | "cash" | "files" | "imports" | "investments" | "transfers" | "settings";
 export type MoneyView = "luciana" | "shared" | "julian";
 const moneyViews = new Set<MoneyView>(["luciana", "shared", "julian"]);
-const views = new Set<View>(["spending", "income", "property", "transactions", "questions", "locations", "recurring", "cash", "files", "imports", "investments", "transfers", "settings"]);
+const views = new Set<View>(["spending", "income", "savings", "property", "transactions", "questions", "locations", "recurring", "cash", "files", "imports", "investments", "transfers", "settings"]);
 
 const viewTitles: Record<View, string> = {
   spending: "How you use your money",
   income: "Income and approximate savings",
+  savings: "Savings plan",
   property: "Satu Lagi House",
   transactions: "Transactions and evidence",
   questions: "Questions inbox",
@@ -188,6 +191,7 @@ export function EmpowerDashboard() {
         <nav className="mt-5 space-y-1 text-sm" aria-label="Workspace">
           <NavItem icon={LayoutDashboard} label="Spending" active={currentView === "spending"} onSelect={() => navigate("spending")} />
           <NavItem icon={TrendingUp} label="Income & savings" active={currentView === "income"} onSelect={() => navigate("income")} />
+          <NavItem icon={Target} label="Savings plan" active={currentView === "savings"} onSelect={() => navigate("savings")} />
           <NavItem icon={House} label="Satu Lagi house" active={currentView === "property"} onSelect={() => navigate("property")} />
           <NavItem icon={WalletCards} label="Transactions" active={currentView === "transactions"} onSelect={() => { setSelection(null); navigate("transactions"); }} />
           <NavItem icon={CircleHelp} label="Questions" badge={pendingCount} active={currentView === "questions"} onSelect={() => navigate("questions")} />
@@ -216,6 +220,7 @@ export function EmpowerDashboard() {
         {notice ? <div role="status" className="mt-5 flex items-center justify-between gap-3 rounded-xl border border-[var(--line)] bg-[var(--surface)] px-4 py-3 text-sm"><span>{notice}</span><button aria-label="Dismiss message" onClick={() => setNotice("")}><X aria-hidden="true" className="size-4" /></button></div> : null}
         {currentView === "spending" ? <ReportingWorkspace workspace={visibleWorkspace} moneyView={moneyView} openTransactions={openTransactions} /> : null}
         {currentView === "income" ? <IncomeSavings workspace={moneyView === "shared" ? systemWorkspace : visibleWorkspace} combinedHousehold={moneyView === "shared"} openTransactions={openTransactions} /> : null}
+        {currentView === "savings" ? <SavingsPlan workspace={systemWorkspace} profile={moneyView} mutate={mutate} /> : null}
         {currentView === "property" ? <PropertyProject workspace={visibleWorkspace} profile={moneyView} openTransactions={openTransactions} /> : null}
         {currentView === "transactions" ? <><TransactionLedger workspace={transactionWorkspace} mutate={mutate} selection={selection} clearSelection={() => setSelection(null)} /><CategoryCreator disabled={workspace.mode !== "live"} mutate={mutate} /></> : null}
         {currentView === "questions" ? <QuestionsInbox workspace={visibleWorkspace} mutate={mutate} openTransactions={openTransactions} /> : null}

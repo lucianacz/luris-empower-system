@@ -28,6 +28,7 @@ The current MVP is built around the supplied Deel, ARQ, Brubank, Payoneer, and A
 - Live normalized ledger with category assignment and personal/household splits
 - Traceable USD reporting for current month, previous month, year to date, and custom ranges
 - Income and approximate-savings reporting with source-payment drill-down
+- Editable personal and shared savings goals with monthly targets, progress, and equal-versus-income-proportional planning guides
 - Monthly cash-flow and normalized service-month views with completed-month averages
 - Click-through totals, charts, categories, merchants, locations, insights, and recurring costs
 - Dynamic location suggestions based on repeated evidence, with confirm/reject/edit/merge/split workflows
@@ -121,6 +122,7 @@ The initial and additive reporting migrations in `supabase/migrations/` create:
 - people, payers, beneficiaries, reimbursements, merchant profiles, and recurring obligations;
 - historical exchange-rate provenance, USD reporting values, and service-month allocations;
 - evidence-linked insights and grouped proactive questions;
+- personal and shared savings goals with targets, deadlines, and manually confirmed saved balances;
 - a private `statement-files` Storage bucket.
 
 Every user-owned table has Row Level Security enabled. Policies compare `auth.uid()` with the row owner, and statement object paths begin with that user ID. Import routes verify the authenticated user again on the server.
@@ -137,7 +139,7 @@ Rollback removes transactions created by the selected batch and marks the batch 
 6. The app stores the original file, imports only new rows, opens questions for uncertainty, and quietly rebuilds transfer suggestions.
 7. Continue through the queue until every selected file is confirmed or safely skipped as a duplicate.
 
-The Spending view then leads with monthly expenses, categories, essential and flexible costs, and personal or household shares. The money-view selector keeps the same tabs while switching between Luciana, shared household spending, and a future Julian dataset. The Income & savings tab compares traceable income with genuine spending while keeping owned-account and investment movements separate. Data coverage remains available below it to flag missing or stale statements.
+The Spending view then leads with monthly expenses, categories, essential and flexible costs, and personal or household shares. The financial-profile selector keeps the same tabs while switching between Luciana, shared household spending, and Julian. The Income & savings tab compares traceable income with genuine spending while keeping owned-account and investment movements separate. The Savings plan tab stores editable goals and uses completed income months for an optional income-proportional household guide.
 
 When a transaction is categorized, matching historical descriptions are categorized at the same time and an exact-match rule is saved for future imports. Ambiguous person-to-person payments remain in the uncategorized queue for review.
 

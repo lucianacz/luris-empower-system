@@ -55,6 +55,13 @@ describe("trip expense reports", () => {
     expect(buildTripExpenseReport(period, [hotel, subscription, business, inferredSubscription], "2026-09-14").report.total.amount).toBe(200);
   });
 
+  it("keeps fixed Costa Rica housing out of an Argentina trip even when paid during that stay", () => {
+    const argentina = { ...period, id: "argentina-trip", starts_on: "2026-10-11", ends_on: "2026-12-31", location: { ...period.location, id: "ar", name: "Argentina", country_code: "AR", country_name: "Argentina", default_currency: "ARS" } };
+    const cara = { ...expense("cara", "2026-11-01", "-1200", "Housing"), merchant_name: "Casa Costa Rica · Cara Goldberg", merchant_country: "CR", location_period: argentina };
+
+    expect(transactionIdsForLocationPeriod(argentina, [cara], "2026-12-31")).toEqual([]);
+  });
+
   it("recognizes temporary stays or confirmed periods with an explicit purpose as trips", () => {
     expect(isTripPeriod(period)).toBe(true);
     expect(isTripPeriod({ ...period, period_type: "home_base", trip_purpose: null })).toBe(false);

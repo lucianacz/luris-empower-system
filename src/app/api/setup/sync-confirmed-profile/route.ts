@@ -2,14 +2,16 @@ import { rebuildSpendingIntelligence } from "@/lib/intelligence/persist";
 import { syncConfirmedCashExpenses } from "@/lib/cash/sync";
 import { syncJulianConfirmedTrips } from "@/lib/locations/confirmed-trips";
 import { syncSatuLagiProject } from "@/lib/property/sync";
+import { syncConfirmedSavingsGoals } from "@/lib/savings/sync";
 import { hasSupabaseEnv } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
-const profileVersion = "confirmed-profile-2026-09-14-v10";
+const profileVersion = "confirmed-profile-2026-09-14-v12";
 const periods = [
+  { name: "Argentina", countryCode: "AR", countryName: "Argentina", currency: "ARS", startsOn: "2025-12-23", endsOn: "2026-01-09", periodType: "temporary_stay", tripPurpose: null },
   { name: "Mexico", countryCode: "MX", countryName: "Mexico", currency: "MXN", startsOn: "2026-01-10", endsOn: "2026-03-06", periodType: "temporary_stay", tripPurpose: null },
   { name: "Miami", countryCode: "US", countryName: "United States", currency: "USD", startsOn: "2026-03-07", endsOn: "2026-03-21", periodType: "temporary_stay", tripPurpose: null },
   { name: "Costa Rica", countryCode: "CR", countryName: "Costa Rica", currency: "CRC", startsOn: "2026-03-22", endsOn: "2026-07-17", periodType: "home_base", tripPurpose: null },
@@ -67,9 +69,16 @@ export async function POST() {
   for (const period of periods) {
     const { data: location, error: locationError } = await supabase.from("locations").upsert({ user_id: user.id, name: period.name, country_code: period.countryCode, country_name: period.countryName, default_currency: period.currency }, { onConflict: "user_id,country_code,name" }).select("id").single();
     if (locationError) return Response.json({ error: locationError.message }, { status: 422 });
-    const { data: createdPeriod, error: createPeriodError } = await supabase.from("location_periods").insert({ user_id: user.id, person_id: luciana.id, location_id: location.id, starts_on: period.startsOn, ends_on: period.endsOn, status: "confirmed", period_type: period.periodType, trip_purpose: period.tripPurpose, confidence: 1, explanation: period.startsOn === "2026-10-11" ? "Future stay manually confirmed by Luciana on September 13, 2026." : "Dates manually confirmed by Luciana on September 13, 2026.", evidence: { source: "user_confirmation", confirmedOn: "2026-09-13" } }).select("id").single();
-    if (createPeriodError) return Response.json({ error: createPeriodError.message }, { status: 422 });
-    let transactionQuery = supabase.from("transactions").update({ location_period_id: createdPeriod.id }).eq("user_id", user.id).eq("account_owner_id", luciana.id).gte("occurred_at", `${period.startsOn}T00:00:00Z`);
+    let exactPeriodQuery = supabase.from("location_periods").select("id").eq("user_id", user.id).eq("person_id", luciana.id).eq("location_id", location.id).eq("starts_on", period.startsOn);
+    exactPeriodQuery = period.endsOn ? exactPeriodQuery.eq("ends_on", period.endsOn) : exactPeriodQuery.is("ends_on", null);
+    const { data: exactPeriods, error: exactPeriodError } = await exactPeriodQuery.limit(1);
+    if (exactPeriodError) return Response.json({ error: exactPeriodError.message }, { status: 422 });
+    const periodPayload = { user_id: user.id, person_id: luciana.id, location_id: location.id, starts_on: period.startsOn, ends_on: period.endsOn, status: "confirmed", period_type: period.periodType, trip_purpose: period.tripPurpose, confidence: 1, explanation: period.startsOn === "2026-10-11" ? "Future stay manually confirmed by Luciana on September 13, 2026." : period.startsOn === "2025-12-23" ? "Luciana confirmed that expenses previously attributed to Brazil during this period were actually from Argentina." : "Dates manually confirmed by Luciana on September 13, 2026.", evidence: { source: "user_confirmation", confirmedOn: "2026-09-14" } };
+    const periodResult = exactPeriods?.[0]
+      ? await supabase.from("location_periods").update(periodPayload).eq("user_id", user.id).eq("id", exactPeriods[0].id).select("id").single()
+      : await supabase.from("location_periods").insert(periodPayload).select("id").single();
+    if (periodResult.error) return Response.json({ error: periodResult.error.message }, { status: 422 });
+    let transactionQuery = supabase.from("transactions").update({ location_period_id: periodResult.data.id }).eq("user_id", user.id).eq("account_owner_id", luciana.id).gte("occurred_at", `${period.startsOn}T00:00:00Z`);
     if (period.endsOn) transactionQuery = transactionQuery.lte("occurred_at", `${period.endsOn}T23:59:59Z`);
     const { error: transactionError } = await transactionQuery;
     if (transactionError) return Response.json({ error: transactionError.message }, { status: 422 });
@@ -82,7 +91,8 @@ export async function POST() {
   const cash = await syncConfirmedCashExpenses(supabase, user.id);
   const intelligence = await rebuildSpendingIntelligence(supabase, user.id);
   const property = await syncSatuLagiProject(supabase, user.id);
-  const { error: saveMarkerError } = await supabase.from("insights").upsert({ user_id: user.id, insight_key: profileVersion, insight_type: "system", title: "Confirmed profile data synchronized", body: "Ownership, confirmed locations, Costa Rica household food, editable scope rules, approximate USD values, cash rent, Satu Lagi dates, and merchant rules have been applied.", priority: 0, transaction_ids: [], metadata: { hidden: true } }, { onConflict: "user_id,insight_key" });
+  const savings = await syncConfirmedSavingsGoals(supabase, user.id);
+  const { error: saveMarkerError } = await supabase.from("insights").upsert({ user_id: user.id, insight_key: profileVersion, insight_type: "system", title: "Confirmed profile data synchronized", body: "Ownership, corrected location periods, savings goals, editable scope rules, approximate USD values, cash rent, Satu Lagi dates, and merchant rules have been applied.", priority: 0, transaction_ids: [], metadata: { hidden: true } }, { onConflict: "user_id,insight_key" });
   if (saveMarkerError) return Response.json({ error: saveMarkerError.message }, { status: 422 });
-  return Response.json({ changed: true, message: "Approximate USD values, cash rent, Satu Lagi, merchant rules, ownership, and confirmed trips were synchronized.", intelligence, property, trips, cash });
+  return Response.json({ changed: true, message: "Locations, savings goals, Satu Lagi, merchant rules, ownership, and confirmed trips were synchronized.", intelligence, property, trips, cash, savings });
 }

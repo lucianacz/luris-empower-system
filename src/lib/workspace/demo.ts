@@ -236,6 +236,20 @@ export interface WorkspacePropertyExpense {
   paid_by: { id: string; display_name: string; role: string } | null;
 }
 
+export interface WorkspaceSavingsGoal {
+  id: string;
+  owner_person_id: string | null;
+  name: string;
+  scope: "personal" | "shared";
+  target_amount: string;
+  saved_amount: string;
+  currency: string;
+  target_date: string | null;
+  status: "active" | "completed" | "paused";
+  notes: string | null;
+  owner: { id: string; display_name: string; role: string } | null;
+}
+
 export interface WorkspaceData {
   mode: "demo" | "signed-out" | "live";
   asOfDate: string;
@@ -253,6 +267,7 @@ export interface WorkspaceData {
   people: WorkspacePerson[];
   propertyProjects: WorkspacePropertyProject[];
   propertyExpenses: WorkspacePropertyExpense[];
+  savingsGoals: WorkspaceSavingsGoal[];
   locationPeriods: WorkspaceLocationPeriod[];
   recurringObligations: WorkspaceRecurringObligation[];
   insights: WorkspaceInsight[];
@@ -279,6 +294,7 @@ export function createEmptyWorkspace(mode: WorkspaceData["mode"] = "signed-out",
     people: [],
     propertyProjects: [],
     propertyExpenses: [],
+    savingsGoals: [],
     locationPeriods: [],
     recurringObligations: [],
     insights: [],
@@ -361,6 +377,7 @@ export const demoWorkspace: WorkspaceData = {
   people: [],
   propertyProjects: [],
   propertyExpenses: [],
+  savingsGoals: [],
   locationPeriods: demoLocations,
   recurringObligations: [{ id: "demo-recurring-insurance", provider_name: "Hospital Alemán", merchant_key: "hospital alemán", frequency: "monthly", status: "active", country_code: "AR", expected_amount: "120", currency: "USD", next_expected_on: "2026-09-05", category: { name: "Health insurance", parent: { name: "Health" } }, transaction_ids: demoInsuranceIds }],
   insights: [{ key: "demo-uncategorized", title: "Six payments still need a category", body: "Open the supporting transactions and teach Empower what they represent.", priority: 90, transactionIds: demoExpenseTransactions.filter((transaction) => !transaction.category_id).map((transaction) => transaction.id) }],
